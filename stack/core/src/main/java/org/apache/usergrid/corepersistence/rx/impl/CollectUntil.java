@@ -38,7 +38,7 @@ public class CollectUntil<T, R> implements Observable.Transformer<T, R> {
     final Func1<R, Boolean> shortCircuitWhen;
 
 
-    public CollectUntil( final Func1<R, Boolean> shortCircuitWhen,  final Func0<R> stateFactory, final Action2<R, ? super T> collector) {
+    public CollectUntil(  final Func0<R> stateFactory,final Func1<R, Boolean> shortCircuitWhen,  final Action2<R, ? super T> collector) {
         this.stateFactory = stateFactory;
         this.collector = collector;
         this.shortCircuitWhen = shortCircuitWhen;
