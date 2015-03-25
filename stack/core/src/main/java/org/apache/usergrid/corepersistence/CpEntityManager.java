@@ -2658,11 +2658,14 @@ public class CpEntityManager implements EntityManager {
             handleWriteUniqueVerifyException( entity, wuve );
         }
         catch ( HystrixRuntimeException hre ) {
-
+            logger.error( "HystrixRuntimeException found during batch create " ,hre.getFailureType() );
             if ( hre.getCause() instanceof WriteUniqueVerifyException ) {
                 WriteUniqueVerifyException wuve = ( WriteUniqueVerifyException ) hre.getCause();
                 handleWriteUniqueVerifyException( entity, wuve );
+            }else{
+                throw hre;
             }
+
         }
 
         // Index CP entity into default collection scope

@@ -12,6 +12,8 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.usergrid.persistence.model.entity.Entity;
 import org.apache.usergrid.persistence.model.entity.Id;
 
+import com.google.common.base.Preconditions;
+
 
 /**
  * @author tnine
@@ -23,7 +25,7 @@ public class EntityUtils {
 
     private static final java.lang.reflect.Field ID = FieldUtils.getField( Entity.class, "id", true );
 
-
+    //TODO: what does this do? Why are we using FieldUtils to set versions and id's.
     /**
      * Set the version into the entity
      */
@@ -35,6 +37,8 @@ public class EntityUtils {
         catch ( IllegalAccessException e ) {
             throw new RuntimeException( "Unable to set the field " + VERSION + " into the entity", e );
         }
+
+        Preconditions.checkArgument( entity.getVersion().equals( version ), "version didn't get set" );
     }
 
 

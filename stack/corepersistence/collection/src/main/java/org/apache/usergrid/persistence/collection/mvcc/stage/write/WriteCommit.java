@@ -51,9 +51,9 @@ import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 
 import rx.functions.Func1;
 
-
+//TODO: can write commit fail and everything else still work.
 /**
- * This phase should invoke any finalization, and mark the entity as committed in the 
+ * This phase should invoke any finalization, and mark the entity as committed in the
  * data store before returning
  */
 @Singleton
@@ -137,7 +137,7 @@ public class WriteCommit implements Func1<CollectionIoEvent<MvccEntity>, Entity>
                 "Failed to execute write asynchronously ", e );
         }
 
-
+        ValidationUtils.verifyTimeUuid( mvccEntity.getVersion(),"version" );
         return mvccEntity.getEntity().get();
     }
 }
