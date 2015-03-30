@@ -629,11 +629,12 @@ public class CpEntityManager implements EntityManager {
             handleWriteUniqueVerifyException( entity, wuve );
         }
         catch ( HystrixRuntimeException hre ) {
-
+            logger.error( "Hysterix returned an exception during update" );
             if ( hre.getCause() instanceof WriteUniqueVerifyException ) {
                 WriteUniqueVerifyException wuve = ( WriteUniqueVerifyException ) hre.getCause();
                 handleWriteUniqueVerifyException( entity, wuve );
             }
+            logger.error( "EXACT EXCEPTION IS BELOW" );
 
             throw hre;
         }

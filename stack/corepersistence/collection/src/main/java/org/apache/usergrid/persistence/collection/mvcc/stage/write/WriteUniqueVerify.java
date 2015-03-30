@@ -78,6 +78,7 @@ public class WriteUniqueVerify implements Action1<CollectionIoEvent<MvccEntity>>
     private final CassandraConfig cassandraFig;
 
 
+
     @Inject
     public WriteUniqueVerify( final UniqueValueSerializationStrategy uniqueValueSerializiationStrategy,
                               final SerializationFig serializationFig, final Keyspace keyspace, final CassandraConfig cassandraFig ) {
@@ -111,7 +112,12 @@ public class WriteUniqueVerify implements Action1<CollectionIoEvent<MvccEntity>>
         // Construct all the functions for verifying we're unique
         //
 
+        //create a new configuration param with a stronger consistency level write
+        //then read it back at a stronger consistency.
+        //SErialization fig,
+        //In the batch set the consistency level in the batch before it goes off to do the write.
 
+        batch.setConsistencyLevel( cassandraFig.getWriteCL() );
         for ( final Field field : EntityUtils.getUniqueFields(entity)) {
 
             // if it's unique, create a function to validate it and add it to the list of
@@ -194,8 +200,9 @@ public class WriteUniqueVerify implements Action1<CollectionIoEvent<MvccEntity>>
             for ( final Field field : uniqueFields ) {
 
                 final UniqueValue uniqueValue = uniqueValues.getValue( field.getName() );
-
                 if ( uniqueValue == null ) {
+                    LOG.error( "Could not get uniqueValue from the field name." );
+
                     throw new RuntimeException(
                         String.format( "Could not retrieve unique value for field %s, unable to verify",
                             field.getName() ) );
@@ -218,5 +225,5 @@ public class WriteUniqueVerify implements Action1<CollectionIoEvent<MvccEntity>>
     public static final HystrixCommand.Setter
         REPLAY_GROUP = HystrixCommand.Setter.withGroupKey(
             HystrixCommandGroupKey.Factory.asKey( "user" ) ).andThreadPoolPropertiesDefaults(
-                HystrixThreadPoolProperties.Setter().withCoreSize( 1000 ) );
+                HystrixThreadPoolProperties.Setter().withCoreSize( 100 ) );
 }
