@@ -719,4 +719,23 @@ public class EntityCollectionManagerIT {
         assertFalse( uniqueValues.iterator().hasNext() );
 
     }
+
+    @Test
+    public void testGetIdField() throws Exception {
+
+        ApplicationScope context =  new ApplicationScopeImpl( new SimpleId( "organization" ) );
+
+        Entity entity1 = new Entity( new SimpleId( "item" ) );
+        entity1.setField( new StringField( "unique_id", "1", true ));
+        EntityCollectionManager manager = factory.createCollectionManager( context );
+        manager.write( entity1 ).toBlocking().last();
+
+        final Observable<Id> idO = manager.getIdField("item", new StringField("unique_id", "1"));
+        Id id = idO.toBlocking().lastOrDefault(null);
+        assertEquals(entity1.getId(), id);
+
+        final Observable<Id> badIdO = manager.getIdField("deleted_item", new StringField("unique_id", "1"));
+        Id badId = badIdO.toBlocking().lastOrDefault(null);
+        assertEquals(entity1.getId(), badId );
+    }
 }
