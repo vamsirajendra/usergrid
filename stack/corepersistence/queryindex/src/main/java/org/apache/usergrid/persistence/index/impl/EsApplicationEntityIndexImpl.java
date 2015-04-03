@@ -61,7 +61,7 @@ import static org.apache.usergrid.persistence.index.impl.IndexingUtils.SPLITTER;
 /**
  * Classy class class.
  */
-public class EsApplicationEntityIndexImpl implements ApplicationEntityIndex {
+public class EsApplicationEntityIndexImpl implements ApplicationEntityIndex{
 
     private static final Logger logger = LoggerFactory.getLogger(EsApplicationEntityIndexImpl.class);
 
@@ -130,7 +130,7 @@ public class EsApplicationEntityIndexImpl implements ApplicationEntityIndex {
     public CandidateResults search(final IndexScope indexScope, final SearchTypes searchTypes, final Query query, final int limit){
 
         if(query.getCursor()!=null){
-            return getNextPage(query.getCursor(), query.getLimit() );
+            return getNextPage(query.getCursor(), query.getLimit());
         }
 
         SearchResponse searchResponse;
@@ -155,11 +155,11 @@ public class EsApplicationEntityIndexImpl implements ApplicationEntityIndex {
         }
         failureMonitor.success();
 
-        return parseResults(searchResponse, query.getLimit() );
+        return parseResults(searchResponse, limit);
     }
 
 
-    public CandidateResults getNextPage(final String cursor, final int limit ){
+    public CandidateResults getNextPage(final String cursor, final int limit){
         SearchResponse searchResponse;
 
         String userCursorString = cursor;
@@ -260,7 +260,7 @@ public class EsApplicationEntityIndexImpl implements ApplicationEntityIndex {
 
 
 
-    private CandidateResults parseResults( final SearchResponse searchResponse, final int expectedSize ) {
+    private CandidateResults parseResults( final SearchResponse searchResponse,final int limit) {
 
         final SearchHits searchHits = searchResponse.getHits();
         final SearchHit[] hits = searchHits.getHits();
@@ -285,7 +285,9 @@ public class EsApplicationEntityIndexImpl implements ApplicationEntityIndex {
         final CandidateResults candidateResults = new CandidateResults(candidates);
         final String esScrollCursor = searchResponse.getScrollId();
 
-        if ( esScrollCursor != null && hits.length >= expectedSize ) {
+        // >= seems odd.  However if our user reduces expectedSize (limit) on subsequent requests, we can't do that
+        //therefor we need to account for the overflow
+        if(esScrollCursor != null && length >= limit) {
             candidateResults.initializeCursor();
 
             //now set this into our map module
