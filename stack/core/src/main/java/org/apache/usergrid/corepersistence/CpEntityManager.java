@@ -2243,14 +2243,11 @@ public class CpEntityManager implements EntityManager {
     private Id getIdForUniqueEntityField( final String collectionName, final String propertyName,
                                           final Object propertyValue ) {
 
-        //convert to a string, that's what we store
-        final Id results = ecm.getIdField( Inflector.getInstance().singularize( collectionName ), new StringField(
-                propertyName, propertyValue.toString() ) ).toBlocking() .lastOrDefault( null );
-
-//        final Id results = ecm.getIdField(
-//            Inflector.getInstance().singularize( collectionName ),
-//            new StringField( propertyName, propertyValue.toString() )
-//        ).toBlocking() .lastOrDefault( null );
+        // convert to a string, that's what we store
+        final Id results = ecm.getIdField(
+            Inflector.getInstance().singularize( collectionName ),
+            new StringField( propertyName, propertyValue.toString() )
+        ).toBlocking() .lastOrDefault( null );
 
         return results;
     }
