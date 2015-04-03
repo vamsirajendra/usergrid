@@ -2304,6 +2304,12 @@ public class CpEntityManager implements EntityManager {
         //convert to a string, that's what we store
         final Id results = ecm.getIdField( new StringField(
                 propertyName, propertyValue.toString() ) ).toBlocking() .lastOrDefault( null );
+
+//        final Id results = ecm.getIdField(
+//            Inflector.getInstance().singularize( collectionName ),
+//            new StringField( propertyName, propertyValue.toString() )
+//        ).toBlocking() .lastOrDefault( null );
+
         return results;
     }
 
