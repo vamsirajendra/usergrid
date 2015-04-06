@@ -89,7 +89,7 @@ public class ApplicationIdCacheImpl implements ApplicationIdCache {
         final UUID value;
 
         EntityCollectionManager ecm = emf.getManagerCache().getEntityCollectionManager(
-            new ApplicationScopeImpl( new SimpleId( CpNamingUtils.SYSTEM_APP_ID, Schema.TYPE_APPLICATION ) ) );
+            new ApplicationScopeImpl( new SimpleId( CpNamingUtils.MANAGEMENT_APPLICATION_ID, Schema.TYPE_APPLICATION ) ) );
 
         try {
             if ( rootEm.getApplication() == null ) {
@@ -106,7 +106,7 @@ public class ApplicationIdCacheImpl implements ApplicationIdCache {
             Id id = idObs.toBlocking().lastOrDefault(null);
             value = id.getUuid();
 
-            logger.debug("Loaded    for key {} value {}", applicationName, value );
+            logger.debug("Loaded for key {} value {}", applicationName, value );
             return value;
         }
         catch ( Exception e ) {
