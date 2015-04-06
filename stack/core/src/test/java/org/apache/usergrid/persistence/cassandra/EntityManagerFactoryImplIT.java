@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import junit.framework.Assert;
 import org.apache.usergrid.persistence.*;
 import org.apache.usergrid.utils.UUIDUtils;
 import org.junit.AfterClass;
@@ -308,5 +309,20 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
 		 * entities.size());
 		 */
         traceTagReporter.report( traceTagManager.detach() );
+    }
+
+
+    @Test
+    public void testCreateAndImmediateGet() throws Exception {
+
+        String random = RandomStringUtils.randomAlphabetic(10);
+        String orgName = "org_" + random;
+        String appName = "app_" + random;
+        String orgAppName = orgName + "/" + appName;
+
+        UUID appId = setup.createApplication(orgName, appName);
+        UUID lookedUpId = setup.getEmf().lookupApplication( orgAppName );
+
+        Assert.assertEquals(appId, lookedUpId);
     }
 }

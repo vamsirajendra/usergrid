@@ -20,6 +20,7 @@ package org.apache.usergrid.rest.applications;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.jersey.api.client.UniformInterfaceException;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.usergrid.rest.test.resource2point0.AbstractRestIT;
 import org.apache.usergrid.rest.test.resource2point0.endpoints.mgmt.ManagementResponse;
 import org.apache.usergrid.rest.test.resource2point0.model.ApiResponse;
@@ -32,11 +33,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.ws.rs.core.MediaType;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 
@@ -45,24 +44,62 @@ public class ApplicationCreateIT extends AbstractRestIT {
 
 
     /**
-     * Ensure that we can create many apps and successfully page through them.
+     * Test that we can create and then immediately retrieve an app by name.
      * https://issues.apache.org/jira/browse/USERGRID-491
-     *
-     * <pre>
-     * </pre>
      */
     @Test
-    public void testCreateAndRetreieveApps() throws Exception {
+    public void testCreateAndImmediateGet() throws Exception {
 
-        // create app with a collection of "things"
+        // create app
 
         String orgName = clientSetup.getOrganization().getName();
-        String appToDeleteName = clientSetup.getAppName() + "_appToDelete";
-        Token orgAdminToken = getAdminToken( clientSetup.getUsername(), clientSetup.getUsername());
+        String appName = clientSetup.getAppName() + "_new_app";
+        Token orgAdminToken = getAdminToken(clientSetup.getUsername(), clientSetup.getUsername());
 
-        List<Entity> entities = new ArrayList<>();
+        ApiResponse appCreateResponse = clientSetup.getRestClient()
+            .management().orgs().organization( orgName ).app().getResource()
+            .queryParam( "access_token", orgAdminToken.getAccessToken() )
+            .type( MediaType.APPLICATION_JSON )
+            .post(ApiResponse.class, new Application(appName));
+        appCreateResponse.getEntities().get(0).getUuid();
 
-        UUID appToDeleteId = createAppWithCollection(orgName, appToDeleteName, orgAdminToken, entities);
+        // should be able to immediate get the application's roles collection
+
+        String response = clientSetup.getRestClient().getResource()
+            .path("/" + clientSetup.getOrganizationName() + "/" + appName + "/roles" )
+            .get(String.class);
+        logger.error( response );
+
+    }
+
+
+    /**
+     * Test that we can create applications and the immediately retrieve them all.
+     */
+    @Test
+    public void testCreateAndImmediateList() throws Exception {
+
+        int appCount = 40;
+
+        String random = RandomStringUtils.randomAlphabetic(10);
+        String orgName = "org_" + random;
+        String appName = "app_" + random;
+        Token orgAdminToken = getAdminToken(clientSetup.getUsername(), clientSetup.getUsername());
+
+        for ( int i=0; i<appCount; i++ ) {
+           createAppWithCollection( orgName, appName + i, orgAdminToken, new ArrayList<>() );
+        }
+
+        // test that we get all applications back from the management end-point
+
+        ManagementResponse orgAppResponse = clientSetup.getRestClient()
+            .management().orgs().organization( orgName ).apps().getOrganizationApplications();
+
+        int count = 0;
+        for ( String name : orgAppResponse.getData().keySet() ) {
+            count++;
+        }
+        assertEquals( appCount, count );
     }
 
 
@@ -76,7 +113,8 @@ public class ApplicationCreateIT extends AbstractRestIT {
             .post( ApiResponse.class, new Application( appName ) );
         UUID appId = appCreateResponse.getEntities().get(0).getUuid();
 
-        for ( int i=0; i<10; i++ ) {
+
+        for ( int i=0; i<5; i++ ) {
 
             final String entityName = "entity" + i;
             Entity entity = new Entity();

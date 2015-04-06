@@ -29,14 +29,18 @@ import org.apache.usergrid.persistence.EntityManagerFactory;
 import org.apache.usergrid.persistence.Schema;
 import org.apache.usergrid.persistence.collection.EntityCollectionManager;
 import org.apache.usergrid.persistence.core.scope.ApplicationScopeImpl;
+import org.apache.usergrid.persistence.model.entity.Entity;
 import org.apache.usergrid.persistence.model.entity.Id;
 import org.apache.usergrid.persistence.model.entity.SimpleId;
 import org.apache.usergrid.persistence.model.field.StringField;
+import org.apache.usergrid.utils.UUIDUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rx.Observable;
 
 import java.util.UUID;
+
+import static org.apache.usergrid.persistence.Schema.PROPERTY_APPLICATION_ID;
 
 
 /**
@@ -89,7 +93,8 @@ public class ApplicationIdCacheImpl implements ApplicationIdCache {
         final UUID value;
 
         EntityCollectionManager ecm = emf.getManagerCache().getEntityCollectionManager(
-            new ApplicationScopeImpl( new SimpleId( CpNamingUtils.MANAGEMENT_APPLICATION_ID, Schema.TYPE_APPLICATION ) ) );
+            new ApplicationScopeImpl(
+                new SimpleId( CpNamingUtils.MANAGEMENT_APPLICATION_ID, Schema.TYPE_APPLICATION ) ) );
 
         try {
             if ( rootEm.getApplication() == null ) {
@@ -100,11 +105,22 @@ public class ApplicationIdCacheImpl implements ApplicationIdCache {
         }
 
         try {
+
+            // look up application_info ID for application using unique "name" field
             final Observable<Id> idObs = ecm.getIdField(
-                Schema.TYPE_APPLICATION, new StringField( Schema.PROPERTY_NAME, applicationName ));
+                CpNamingUtils.APPLICATION_INFO, new StringField(Schema.PROPERTY_NAME, applicationName));
 
             Id id = idObs.toBlocking().lastOrDefault(null);
-            value = id.getUuid();
+            UUID applicationInfoId = id.getUuid();
+
+            // get the application_info by ID
+            Entity applicationInfo = ecm.load(
+                new SimpleId( applicationInfoId, CpNamingUtils.APPLICATION_INFO ))
+            .toBlocking().lastOrDefault( null );
+
+            // extract application UUID from application_info
+            value = UUIDUtils.tryExtractUUID(
+                applicationInfo.getField( PROPERTY_APPLICATION_ID ).getValue().toString() );
 
             logger.debug("Loaded for key {} value {}", applicationName, value );
             return value;
