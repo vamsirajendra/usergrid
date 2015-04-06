@@ -656,9 +656,7 @@ public class EntityIndexTest extends BaseIT {
             //**
             Query query = Query.fromQL( "select * order by created" );
 
-            final CandidateResults results = cursor == null
-                ?  entityIndex.search( indexScope, SearchTypes.allTypes(), query , limit)
-                : entityIndex.getNextPage(cursor, limit);
+            final CandidateResults results = cursor == null ?  entityIndex.search( indexScope, SearchTypes.allTypes(), query , limit) : entityIndex.getNextPage(cursor, limit);
 
             assertTrue( results.hasCursor() );
 
