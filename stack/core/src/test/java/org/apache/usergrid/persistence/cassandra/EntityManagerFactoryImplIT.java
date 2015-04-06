@@ -16,44 +16,29 @@
  */
 package org.apache.usergrid.persistence.cassandra;
 
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
 import junit.framework.Assert;
-import org.apache.usergrid.persistence.*;
-import org.apache.usergrid.utils.UUIDUtils;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.commons.lang3.RandomStringUtils;
-
 import org.apache.usergrid.AbstractCoreIT;
+import org.apache.usergrid.Application;
+import org.apache.usergrid.CoreApplication;
+import org.apache.usergrid.persistence.*;
 import org.apache.usergrid.persistence.cassandra.util.TraceTag;
 import org.apache.usergrid.persistence.cassandra.util.TraceTagManager;
 import org.apache.usergrid.persistence.cassandra.util.TraceTagReporter;
 import org.apache.usergrid.persistence.model.util.UUIDGenerator;
 import org.apache.usergrid.setup.ConcurrentProcessSingleton;
-import rx.functions.Func0;
-import rx.functions.Func1;
+import org.apache.usergrid.utils.UUIDUtils;
+import org.junit.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import rx.functions.Func2;
 
 import javax.annotation.concurrent.NotThreadSafe;
+import java.util.*;
 
 import static org.apache.usergrid.persistence.Schema.PROPERTY_APPLICATION_ID;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
+
 
 @NotThreadSafe
 public class EntityManagerFactoryImplIT extends AbstractCoreIT {
@@ -65,6 +50,10 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
     public EntityManagerFactoryImplIT() {
         emf = ConcurrentProcessSingleton.getInstance().getSpringResource().getBean( EntityManagerFactory.class );
     }
+
+    @Rule
+    public Application app = new CoreApplication( setup );
+
 
 
     @BeforeClass
@@ -133,9 +122,12 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
             Thread.sleep( 500 );
         }
 
+        this.app.refreshIndex();
+
         // delete the application
 
-        setup.getEmf().deleteApplication( deletedAppId );
+        setup.getEmf().deleteApplication(deletedAppId);
+        this.app.refreshIndex();
 
         // wait for it to appear in delete apps list
 
@@ -153,6 +145,7 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
                 return found;
             }
         };
+        this.app.refreshIndex();
 
         boolean found = false;
         for ( int i=0; i<maxRetries; i++) {
@@ -164,6 +157,7 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
             }
         }
         assertTrue( "Deleted app must be found in in deleted apps collection", found );
+        this.app.refreshIndex();
 
         // attempt to get entities in application's collections in various ways should all fail
 
@@ -178,6 +172,7 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
         assertFalse( "Lookup of deleted app must fail", found );
 
         // app must not be found in apps collection
+        this.app.refreshIndex();
 
         for ( int i=0; i<maxRetries; i++ ) {
             found = findApps.call( deletedAppId, emf.getApplications() );
@@ -187,18 +182,19 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
                 break;
             }
         }
-        assertFalse( "Deleted app must not be found in apps collection", found );
+        assertFalse("Deleted app must not be found in apps collection", found);
 
         // restore the app
 
-        emf.refreshIndex();
+        this.app.refreshIndex();
 
-        emf.restoreApplication( deletedAppId );
+
+        emf.restoreApplication(deletedAppId);
 
         emf.rebuildAllIndexes(new EntityManagerFactory.ProgressObserver() {
             @Override
             public void onProgress(EntityRef entity) {
-                logger.debug("Reindexing {}:{}", entity.getType(), entity.getUuid() );
+                logger.debug("Reindexing {}:{}", entity.getType(), entity.getUuid());
             }
         });
 
@@ -214,6 +210,7 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
             }
         }
         assertFalse("Restored app found in deleted apps collection", found);
+        this.app.refreshIndex();
 
         for(int i=0;i<maxRetries;i++){
             found = findApps.call(deletedAppId,setup.getEmf().getApplications());
@@ -226,7 +223,7 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
         assertTrue("Restored app not found in apps collection", found);
 
         // TODO: this assertion should work!
-        //assertNotNull(setup.getEmf().lookupApplication( orgName + "/" + appName ));
+        assertNotNull(setup.getEmf().lookupApplication( orgName + "/" + appName ));
     }
 
 
