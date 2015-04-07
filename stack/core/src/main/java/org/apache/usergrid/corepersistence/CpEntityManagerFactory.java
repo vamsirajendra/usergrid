@@ -245,7 +245,7 @@ public class CpEntityManagerFactory implements EntityManagerFactory, Application
         // Ensure our management system exists before creating our application
         init();
 
-        EntityManager em = getEntityManager( CpNamingUtils.MANAGEMENT_APPLICATION_ID );
+        EntityManager managementEm = getEntityManager( CpNamingUtils.MANAGEMENT_APPLICATION_ID );
 
         final String appName = buildAppName( organizationName, name );
 
@@ -275,7 +275,7 @@ public class CpEntityManagerFactory implements EntityManagerFactory, Application
 
         Entity appInfo;
         try {
-            appInfo = em.create(CpNamingUtils.APPLICATION_INFO, appInfoMap);
+            appInfo = managementEm.create(new SimpleId(applicationId,CpNamingUtils.APPLICATION_INFO), appInfoMap);
         } catch (DuplicateUniquePropertyExistsException e) {
             throw new ApplicationAlreadyExistsException(appName);
         }
@@ -307,72 +307,59 @@ public class CpEntityManagerFactory implements EntityManagerFactory, Application
 
         final EntityManager managementEm = getEntityManager(CpNamingUtils.MANAGEMENT_APPLICATION_ID);
         final Application app = managementEm.getApplication();
-        final Id managementAppId = new SimpleId( app.getUuid(), app.getType() );
+        final Id managementAppId = new SimpleId(app.getUuid(), app.getType());
         final ApplicationScope managementAppScope = new ApplicationScopeImpl(managementAppId);
         final GraphManager managementGraphManager = managerCache.getGraphManager(managementAppScope);
+        final Id deletedAppId = new SimpleId(applicationId, CpNamingUtils.APPLICATION_INFO);
+        final ApplicationScope deletedAppScope = new ApplicationScopeImpl(deletedAppId);
 
-        String edgeType = CpNamingUtils.getEdgeTypeFromCollectionName(CpNamingUtils.APPLICATION_INFOS);
+        Entity appInfoToDelete = managementEm.get(new SimpleEntityRef(CpNamingUtils.APPLICATION_INFO, applicationId));
+        Observable copyConnections = Observable.empty();
+        if(appInfoToDelete!=null) {
+            // ensure that there is not already a deleted app with the same name
 
-        Observable<Edge> appInfoEdges = managementGraphManager.loadEdgesFromSource(new SimpleSearchByEdgeType(
-            managementAppId, edgeType, Long.MAX_VALUE,
-            SearchByEdgeType.Order.DESCENDING, null));
+            final EntityRef alias = managementEm.getAlias(
+                CpNamingUtils.DELETED_APPLICATION_INFO, appInfoToDelete.getName());
+            if (alias != null) {
+                throw new ConflictException("Cannot delete app with same name as already deleted app");
+            }
+            // make a copy of the app to delete application_info entity
+            // and put it in a deleted_application_info collection
 
-        final Observable<Edge> observable = appInfoEdges.flatMap(appInfoEdge -> {
-            try {
-                Entity appInfoToDelete = managementEm.get(appInfoEdge.getTargetNode().getUuid());
-                final Id deletedAppId = new SimpleId(appInfoToDelete.getUuid(), appInfoToDelete.getType());
-                final ApplicationScope deletedAppScope = new ApplicationScopeImpl(deletedAppId);
-                final ApplicationEntityIndex aei = entityIndexFactory.createApplicationEntityIndex(deletedAppScope);
+            final Entity deletedApp = managementEm.create(
+                CpNamingUtils.DELETED_APPLICATION_INFO, appInfoToDelete.getProperties());
+            // copy its connections too
 
-                // ensure that there is not already a deleted app with the same name
-
-                final EntityRef alias = managementEm.getAlias(
-                    CpNamingUtils.DELETED_APPLICATION_INFO, appInfoToDelete.getName());
-                if (alias != null) {
-                    throw new ConflictException("Cannot delete app with same name as already deleted app");
-                }
-                // make a copy of the app to delete application_info entity
-                // and put it in a deleted_application_info collection
-
-                final Entity deletedApp = managementEm.create(
-                    CpNamingUtils.DELETED_APPLICATION_INFO, appInfoToDelete.getProperties());
-
-                // copy its connections too
-
-                final Set<String> connectionTypes = managementEm.getConnectionTypes(appInfoToDelete);
-                Observable copyConnections = Observable.from(connectionTypes).doOnNext(connType -> {
-                    try {
-                        final Results connResults =
-                            managementEm.getConnectedEntities(appInfoToDelete, connType, null, Query.Level.ALL_PROPERTIES);
-                        connResults.getEntities().forEach(entity -> {
-                            try {
-                                managementEm.createConnection(deletedApp, connType, entity);
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-
-                final Observable deleteNodeGraph = managementGraphManager.deleteNode(deletedAppId, Long.MAX_VALUE);
-                final Observable deleteAppFromIndex = aei.deleteApplication();
-
-                return Observable.concat(copyConnections, deleteNodeGraph, deleteAppFromIndex)
-                    .doOnCompleted(() -> {
+            final Set<String> connectionTypes = managementEm.getConnectionTypes(appInfoToDelete);
+            copyConnections = Observable.from(connectionTypes).doOnNext(connType -> {
+                try {
+                    final Results connResults =
+                        managementEm.getConnectedEntities(appInfoToDelete, connType, null, Query.Level.ALL_PROPERTIES);
+                    connResults.getEntities().forEach(entity -> {
                         try {
-                            managementEm.delete(appInfoToDelete);
-                            applicationIdCache.evictAppId(appInfoToDelete.getName());
+                            managementEm.createConnection(deletedApp, connType, entity);
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     });
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-        observable.toBlocking().lastOrDefault(null);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+        final ApplicationEntityIndex aei = entityIndexFactory.createApplicationEntityIndex(deletedAppScope);
+        final Observable deleteNodeGraph = managementGraphManager.deleteNode(deletedAppId, Long.MAX_VALUE);
+        final Observable deleteAppFromIndex = aei.deleteApplication();
+
+        Observable.concat(copyConnections, deleteNodeGraph, deleteAppFromIndex)
+            .doOnCompleted(() -> {
+                try {
+                    managementEm.delete(appInfoToDelete);
+                    applicationIdCache.evictAppId(appInfoToDelete.getName());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).toBlocking().lastOrDefault(null);
 
     }
 
