@@ -41,18 +41,18 @@ import org.apache.usergrid.persistence.Entity;
 import org.apache.usergrid.persistence.EntityManager;
 import org.apache.usergrid.persistence.EntityRef;
 import org.apache.usergrid.persistence.Results;
-import org.apache.usergrid.persistence.collection.CollectionScope;
 import org.apache.usergrid.persistence.collection.EntityCollectionManager;
 import org.apache.usergrid.persistence.collection.EntityCollectionManagerFactory;
 import org.apache.usergrid.persistence.core.scope.ApplicationScope;
 import org.apache.usergrid.persistence.core.scope.ApplicationScopeImpl;
-import org.apache.usergrid.persistence.index.EntityIndex;
+import org.apache.usergrid.persistence.index.ApplicationEntityIndex;
 import org.apache.usergrid.persistence.index.EntityIndexFactory;
 import org.apache.usergrid.persistence.index.IndexScope;
 import org.apache.usergrid.persistence.index.SearchTypes;
 import org.apache.usergrid.persistence.index.impl.IndexScopeImpl;
 import org.apache.usergrid.persistence.index.query.CandidateResults;
 import org.apache.usergrid.persistence.index.query.Query;
+import org.apache.usergrid.persistence.model.entity.Id;
 import org.apache.usergrid.persistence.model.entity.SimpleId;
 
 import com.fasterxml.uuid.UUIDComparator;
@@ -61,8 +61,9 @@ import com.google.inject.Injector;
 import net.jcip.annotations.NotThreadSafe;
 
 import static org.apache.usergrid.corepersistence.CoreModule.EVENTS_DISABLED;
-import static org.apache.usergrid.corepersistence.util.CpNamingUtils.getCollectionScopeNameFromEntityType;
+import static org.apache.usergrid.corepersistence.util.CpNamingUtils.generateScopeFromCollection;
 import static org.apache.usergrid.persistence.Schema.TYPE_APPLICATION;
+import static org.apache.usergrid.persistence.core.util.IdGenerator.createId;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -97,33 +98,92 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
     public void testUpdateVersioning() throws Exception {
 
         // turn off post processing stuff that cleans up stale entities
+        System.setProperty(EVENTS_DISABLED, "true");
+
+        final EntityManager em = app.getEntityManager();
+
+        Entity thing = em.create("thing", new HashMap<String, Object>() {{
+            put("name", "thing1");
+        }});
+        app.refreshIndex();
+
+        assertEquals(1, queryCollectionCp("things", "thing", "select *").size());
+
+        org.apache.usergrid.persistence.model.entity.Entity cpEntity = getCpEntity(thing);
+        UUID oldVersion = cpEntity.getVersion();
+
+        em.updateProperties(thing, new HashMap<String, Object>() {{
+            put("stuff", "widget");
+        }});
+        app.refreshIndex();
+
+        org.apache.usergrid.persistence.model.entity.Entity cpUpdated = getCpEntity(thing);
+        assertEquals("widget", cpUpdated.getField("stuff").getValue());
+        UUID newVersion = cpUpdated.getVersion();
+
+        assertTrue("New version is greater than old",
+            UUIDComparator.staticCompare(newVersion, oldVersion) > 0);
+
+        CandidateResults results;
+        results = queryCollectionCp("things", "thing", "select *");
+        assertEquals(2, results.size());
+    }
+
+
+
+    /**
+     * USERGRID-492 test for ordering
+     */
+    @Test
+    public void testUpdateVersionMaxFirst() throws Exception {
+
+        // turn off post processing stuff that cleans up stale entities
         System.setProperty( EVENTS_DISABLED, "true" );
 
         final EntityManager em = app.getEntityManager();
 
         Entity thing = em.create( "thing", new HashMap<String, Object>() {{
-            put( "name", "thing1" );
+            put( "ordinal", 0 );
         }} );
-        em.refreshIndex();
+
+        app.refreshIndex();
 
         assertEquals( 1, queryCollectionCp( "things", "thing", "select *" ).size() );
 
-        org.apache.usergrid.persistence.model.entity.Entity cpEntity = getCpEntity( thing );
-        UUID oldVersion = cpEntity.getVersion();
-
         em.updateProperties( thing, new HashMap<String, Object>() {{
-            put( "stuff", "widget" );
+            put( "ordinal", 1 );
         }} );
-        em.refreshIndex();
+        app.refreshIndex();
 
-        org.apache.usergrid.persistence.model.entity.Entity cpUpdated = getCpEntity( thing );
-        assertEquals( "widget", cpUpdated.getField( "stuff" ).getValue() );
-        UUID newVersion = cpUpdated.getVersion();
+        UUID newVersion =  getCpEntity( thing ).getVersion();
 
-        assertTrue( "New version is greater than old",
-                UUIDComparator.staticCompare( newVersion, oldVersion ) > 0 );
+        CandidateResults candidateResults = null;
 
-        assertEquals( 2, queryCollectionCp( "things", "thing", "select *" ).size() );
+
+        candidateResults = queryCollectionCp("things", "thing", "select * order by ordinal desc");
+        if(candidateResults.size()!=2){
+            Thread.sleep(200);
+        }
+
+
+        assertEquals(2, candidateResults.size());
+
+        //now run enable events and ensure we clean up
+        System.setProperty(EVENTS_DISABLED, "false");
+
+        Results results =  queryCollectionEm("things", "select * order by ordinal desc");
+
+        assertEquals( 1, results.size() );
+        assertEquals(1, results.getEntities().get( 0 ).getProperty( "ordinal" ));
+
+        app.refreshIndex();
+
+        //ensure it's actually gone
+        candidateResults = queryCollectionCp( "things", "thing", "select * order by ordinal desc" );
+
+        assertEquals(1, candidateResults.size());
+
+        assertEquals(newVersion, candidateResults.get(0).getVersion());
     }
 
 
@@ -134,6 +194,7 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
     @Test
     @Ignore("Broken until search connections is fixed")
     public void testStaleIndexCleanup() throws Exception {
+
 
         logger.info( "Started testStaleIndexCleanup()" );
 
@@ -157,7 +218,7 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
             }} ) );
 
         }
-        em.refreshIndex();
+        app.refreshIndex();
 
         CandidateResults crs = queryCollectionCp( "things", "thing", "select * order by updateCount asc" );
         Assert.assertEquals( "Expect no stale candidates yet", numEntities, crs.size() );
@@ -187,7 +248,7 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
             maxVersions.add( toUpdate );
         }
 
-        em.refreshIndex();
+        app.refreshIndex();
 
         // query Core Persistence directly for total number of result candidates
         crs = queryCollectionCp( "things", "thing", "select * order by updateCount asc" );
@@ -232,12 +293,12 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
         assertEquals( "Expect no stale candidates", numEntities, thingCount );
 
 
-        em.refreshIndex();
+        app.refreshIndex();
 
 
         // query for total number of result candidates = numEntities
         crs = queryCollectionCp( "things", "thing", "select *" );
-        Assert.assertEquals( "Expect stale candidates de-indexed", numEntities, crs.size() );
+        Assert.assertEquals( "Expect stale candidates de-indexed", numEntities, crs.size() );//20,21
     }
 
 
@@ -245,7 +306,8 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
      * Test that the EntityDeleteImpl cleans up stale indexes on delete. Ensures that when an
      * entity is deleted its old indexes are cleared from ElasticSearch.
      */
-    @Test(timeout=30000)
+//    @Test(timeout=30000)
+    @Test
     public void testCleanupOnDelete() throws Exception {
 
         logger.info("Started testStaleIndexCleanup()");
@@ -267,7 +329,7 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
             }}));
             Thread.sleep( writeDelayMs );
         }
-        em.refreshIndex();
+        app.refreshIndex();
 
         CandidateResults crs = queryCollectionCp( "things", "thing", "select *");
         Assert.assertEquals( "Expect no stale candidates yet", numEntities, crs.size() );
@@ -295,7 +357,7 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
             maxVersions.add( toUpdate );
         }
-        em.refreshIndex();
+        app.refreshIndex();
 
         // query Core Persistence directly for total number of result candidates
         crs = queryCollectionCp("things", "thing", "select *");
@@ -309,13 +371,24 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
             em.delete( thing );
         }
 
+
+        //put this into the top of the queue, once it's acked we've been flushed
+        app.refreshIndex();
+
         // wait for indexes to be cleared for the deleted entities
         count = 0;
+
+
+        //we can't use our candidate result sets here.  The repair won't happen since we now have orphaned documents in our index
+        //us the EM so the repair process happens
+
+        Results results = null;
         do {
-            Thread.sleep(100);
+            //trigger the repair
+            results = queryCollectionEm("things", "select *");
             crs = queryCollectionCp("things", "thing", "select *");
-            em.refreshIndex();
-        } while ( crs.size() > 0 && count++ < 15 );
+
+        } while ((results.hasCursor() || crs.size() > 0) && count++ < 2000 );
 
         Assert.assertEquals( "Expect no candidates", 0, crs.size() );
     }
@@ -335,21 +408,20 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
         final EntityManager em = app.getEntityManager();
 
-        final int numEntities = 20;
-        final int numUpdates = 40;
+        final int numEntities = 10;
+        final int numUpdates = 5;
 
         // create lots of entities
-        final List<Entity> things = new ArrayList<Entity>(numEntities);
+        final List<Entity> dogs = new ArrayList<Entity>(numEntities);
         for ( int i=0; i<numEntities; i++) {
-            final String thingName = "thing" + i;
-            things.add( em.create("thing", new HashMap<String, Object>() {{
-                put("name", thingName);
+            final String dogName = "dog" + i;
+            dogs.add( em.create("dog", new HashMap<String, Object>() {{
+                put("name", dogName);
             }}));
-            Thread.sleep( writeDelayMs );
         }
-        em.refreshIndex();
+        app.refreshIndex();
 
-        CandidateResults crs = queryCollectionCp( "things", "thing", "select *");
+        CandidateResults crs = queryCollectionCp( "dogs", "dog", "select *");
         Assert.assertEquals( "Expect no stale candidates yet", numEntities, crs.size() );
 
         // turn off post processing stuff that cleans up stale entities
@@ -359,16 +431,13 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
         List<Entity> maxVersions = new ArrayList<>(numEntities);
         int count = 0;
-        for ( Entity thing : things ) {
+        for ( Entity dog : dogs ) {
             Entity toUpdate = null;
 
             for ( int j=0; j<numUpdates; j++) {
-                toUpdate = em.get( thing.getUuid() );
+                toUpdate = em.get( dog.getUuid() );
                 toUpdate.setProperty( "property"  + j, RandomStringUtils.randomAlphanumeric(10));
-
                 em.update(toUpdate);
-
-                Thread.sleep( writeDelayMs );
                 count++;
                 if ( count % 100 == 0 ) {
                     logger.info("Updated {} of {} times", count, numEntities * numUpdates);
@@ -377,19 +446,15 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
             maxVersions.add( toUpdate );
         }
-        em.refreshIndex();
+        app.refreshIndex();
 
         // wait for indexes to be cleared for the deleted entities
         count = 0;
         do {
-            Thread.sleep(100);
-            crs = queryCollectionCp("things", "thing", "select *");
-            em.refreshIndex();
-        } while ( crs.size() > 0 && count++ < 15 );
+            crs = queryCollectionCp("dogs", "dog", "select *");
+        } while ( crs.size() != numEntities && count++ < 15 );
 
-        // query Core Persistence directly for total number of result candidates
-        crs = queryCollectionCp("things", "thing", "select *");
-        Assert.assertEquals( "Expect candidates without earlier stale entities", numEntities, crs.size() );
+        Assert.assertEquals("Expect candidates without earlier stale entities", crs.size(), numEntities);
     }
 
 
@@ -401,13 +466,11 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
         EntityManager em = app.getEntityManager();
 
-        CollectionScope cs = getCollectionScopeNameFromEntityType(
-                new SimpleId( em.getApplicationId(), TYPE_APPLICATION ), eref.getType() );
 
         EntityCollectionManagerFactory ecmf =
             SpringResource.getInstance().getBean( Injector.class ).getInstance( EntityCollectionManagerFactory.class );
 
-        EntityCollectionManager ecm = ecmf.createCollectionManager( cs );
+        EntityCollectionManager ecm = ecmf.createCollectionManager( new ApplicationScopeImpl( new SimpleId(em.getApplicationId(),  "application" ) ) );
 
         return ecm.load( new SimpleId( eref.getUuid(), eref.getType() ) )
                 .toBlocking().lastOrDefault( null );
@@ -423,14 +486,15 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
         EntityManager em = app.getEntityManager();
 
-        EntityIndexFactory eif =  SpringResource.getInstance().getBean( Injector.class ).getInstance( EntityIndexFactory.class );
+        EntityIndexFactory eif =  SpringResource.getInstance().getBean( Injector.class ).getInstance(
+            EntityIndexFactory.class );
 
         ApplicationScope as = new ApplicationScopeImpl(
             new SimpleId( em.getApplicationId(), TYPE_APPLICATION ) );
-        EntityIndex ei = eif.createEntityIndex( as );
+        ApplicationEntityIndex ei = eif.createApplicationEntityIndex(as);
 
-        IndexScope is = new IndexScopeImpl( new SimpleId( em.getApplicationId(), TYPE_APPLICATION ),
-                CpNamingUtils.getCollectionScopeNameFromCollectionName( collName ) );
+        final Id rootId = createId(em.getApplicationId(), TYPE_APPLICATION);
+        IndexScope is = generateScopeFromCollection(rootId, collName );
         Query rcq = Query.fromQL( query );
 
         // TODO: why does this have no effect; max we ever get is 1000 entities
@@ -438,4 +502,18 @@ public class StaleIndexCleanupTest extends AbstractCoreIT {
 
         return ei.search( is, SearchTypes.fromTypes( type ), rcq );
     }
+
+    /**
+        * Go around EntityManager and execute query directly against Core Persistence.
+        * Results may include stale index entries.
+        */
+       private Results queryCollectionEm( final String collName,  final String query ) throws Exception {
+
+           EntityManager em = app.getEntityManager();
+
+
+           final Results results = em.searchCollection( em.getApplicationRef(), collName, Query.fromQL( query ).withLimit( 10000 ) );
+
+           return results;
+       }
 }

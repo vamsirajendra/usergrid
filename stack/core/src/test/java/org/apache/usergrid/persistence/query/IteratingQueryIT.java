@@ -291,14 +291,13 @@ public class IteratingQueryIT {
 
         for ( int i = 0; i < size; i++ ) {
             Map<String, Object> entity = new HashMap<String, Object>();
-            entity.put( "name", String.valueOf( i ) );
+            entity.put("name", String.valueOf(i));
 
-            io.writeEntity( entity );
+            io.writeEntity(entity);
             //we have to sleep, or we kill embedded cassandra
-            Thread.sleep( 10 );
 
         }
-
+        app.refreshIndex();
         long stop = System.currentTimeMillis();
 
         LOG.info( "Writes took {} ms", stop - start );
@@ -367,6 +366,9 @@ public class IteratingQueryIT {
                 expected.add( name );
             }
         }
+        app.refreshIndex();
+        Thread.sleep(500);
+
 
         long stop = System.currentTimeMillis();
 
@@ -1002,8 +1004,8 @@ public class IteratingQueryIT {
         LOG.info( "Writes took {} ms", stop - start );
 
         Query query = Query.fromQL(
-                String.format( "select * where index >= %d AND index <= %d order by index desc", startValue,
-                        endValue ) );
+            String.format( "select * where index >= %d AND index <= %d order by index desc", startValue,
+                endValue ) );
         query.setLimit( queryLimit );
 
         int count = 0;
@@ -1065,8 +1067,8 @@ public class IteratingQueryIT {
         LOG.info( "Writes took {} ms", stop - start );
 
         Query query = Query.fromQL(
-                String.format( "select * where index >= %d AND index <= %d order by index asc", startValue,
-                        endValue ) );
+            String.format( "select * where index >= %d AND index <= %d order by index asc", startValue,
+                endValue ) );
         query.setLimit( queryLimit );
 
         int count = 0;
@@ -1123,7 +1125,8 @@ public class IteratingQueryIT {
 
         LOG.info( "Writes took {} ms", stop - start );
 
-        app.getEntityManager().refreshIndex();
+        app.refreshIndex();
+        Thread.sleep(500);
 
         Query query = new Query();
         query.setLimit( 100 );
@@ -1224,7 +1227,7 @@ public class IteratingQueryIT {
 
         LOG.info( "Writes took {} ms", stop - start );
 
-        app.getEntityManager().refreshIndex();
+        app.refreshIndex();
 
         Query query = Query.fromQL( "select * order by boolean desc, index asc" );
         query.setLimit( queryLimit );
@@ -1330,10 +1333,10 @@ public class IteratingQueryIT {
 
         LOG.info( "Writes took {} ms", stop - start );
 
-        app.getEntityManager().refreshIndex();
+        app.refreshIndex();
 
         Query query =
-                Query.fromQL( "select * where intersect = true OR intersect2 = true order by created, intersect desc" );
+            Query.fromQL( "select * where intersect = true OR intersect2 = true order by created, intersect desc" );
         query.setLimit( queryLimit );
 
         int count = 0;

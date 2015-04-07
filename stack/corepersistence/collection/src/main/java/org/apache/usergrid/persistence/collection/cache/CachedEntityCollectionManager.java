@@ -21,11 +21,11 @@ package org.apache.usergrid.persistence.collection.cache;
 
 
 import java.util.Collection;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.usergrid.persistence.collection.EntityCollectionManager;
 import org.apache.usergrid.persistence.collection.EntitySet;
+import org.apache.usergrid.persistence.collection.FieldSet;
 import org.apache.usergrid.persistence.collection.VersionSet;
 import org.apache.usergrid.persistence.core.util.Health;
 import org.apache.usergrid.persistence.model.entity.Entity;
@@ -34,8 +34,6 @@ import org.apache.usergrid.persistence.model.field.Field;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
@@ -74,6 +72,10 @@ public class CachedEntityCollectionManager implements EntityCollectionManager {
                                   .build();
     }
 
+    @Override
+    public Observable<FieldSet> getEntitiesFromFields(  final String entityType, final Collection<Field> fields) {
+        return targetEntityCollectionManager.getEntitiesFromFields( entityType, fields );
+    }
 
     @Override
     public Observable<Entity> write( final Entity entity ) {
@@ -111,9 +113,10 @@ public class CachedEntityCollectionManager implements EntityCollectionManager {
     }
 
 
+
     @Override
-    public Observable<Id> getIdField( final Field field ) {
-        return targetEntityCollectionManager.getIdField( field );
+    public Observable<Id> getIdField( final String entityType,  final Field field ) {
+        return targetEntityCollectionManager.getIdField( entityType, field );
     }
 
 
@@ -121,13 +124,6 @@ public class CachedEntityCollectionManager implements EntityCollectionManager {
     public Observable<EntitySet> load( final Collection<Id> entityIds ) {
         return targetEntityCollectionManager.load( entityIds );
     }
-
-
-    @Override
-    public Observable<Entity> update( final Entity entity ) {
-        return targetEntityCollectionManager.update( entity ).doOnNext( cacheAdd );
-    }
-
 
     @Override
     public Health getHealth() {

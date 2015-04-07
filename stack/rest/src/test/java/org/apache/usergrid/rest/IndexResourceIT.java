@@ -53,11 +53,13 @@ public class IndexResourceIT extends AbstractRestIT {
     @Ignore( "will finish when tests are working from rest" )
     @Test
     public void TestAddIndex() throws Exception{
+
         String superToken = superAdminToken();
 
         Map<String, Object> data = new HashMap<String, Object>();
         data.put( "replicas", 0 );
         data.put( "shards", 1 );
+        data.put( "writeConsistency", "one" );
 
         UUID appId = this.context.getAppUuid();
 

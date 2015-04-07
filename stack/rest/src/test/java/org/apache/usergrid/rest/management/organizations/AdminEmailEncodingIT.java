@@ -88,13 +88,9 @@ public class AdminEmailEncodingIT extends AbstractRestIT {
      * Given an organization name and an arbitrary character or string,
      * ensure that an organization and admin user can be created when
      * the given string is a part of the admin email address
-<<<<<<< HEAD
-     * @param symbol
-=======
      *
      * @param symbol
-     * @throws IOException
->>>>>>> b4727f1db4b3e3e312b6f40d25a42ee66246cfd7
+     * @throws UniformInterfaceException
      */
     private void doTest(String symbol) throws UniformInterfaceException {
 
@@ -116,7 +112,8 @@ public class AdminEmailEncodingIT extends AbstractRestIT {
         assertNotNull(organization);
 
         //Retrieve an authorization token using the credentials created above
-        Token tokenReturned = clientSetup.getRestClient().management().token().post(new Token("password", username, password));
+        Token tokenReturned = clientSetup.getRestClient().management().token()
+                                         .post(Token.class,new Token("password", username, password));
         assertNotNull(tokenReturned);
 
         //Instruct the test framework to use the new token

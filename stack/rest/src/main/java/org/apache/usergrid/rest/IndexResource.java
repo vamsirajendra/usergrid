@@ -20,11 +20,10 @@
 
 package org.apache.usergrid.rest;
 
+import com.google.common.base.Preconditions;
 import com.sun.jersey.api.json.JSONWithPadding;
-import org.apache.usergrid.persistence.EntityManager;
 import org.apache.usergrid.persistence.EntityManagerFactory;
 import org.apache.usergrid.persistence.EntityRef;
-import org.apache.usergrid.persistence.index.EntityIndex;
 import org.apache.usergrid.persistence.index.utils.UUIDUtils;
 import org.apache.usergrid.rest.security.annotations.RequireSystemAccess;
 import org.slf4j.Logger;
@@ -52,6 +51,10 @@ import java.util.UUID;
 public class IndexResource extends AbstractContextResource {
 
     private static final Logger logger = LoggerFactory.getLogger(IndexResource.class);
+
+    public IndexResource(){
+        super();
+    }
 
     @RequireSystemAccess
     @PUT
@@ -87,6 +90,8 @@ public class IndexResource extends AbstractContextResource {
                 catch ( Exception e ) {
                     logger.error( "Unable to rebuild indexes", e );
                 }
+
+                logger.info( "Completed all indexes" );
             }
         };
 
@@ -129,12 +134,20 @@ public class IndexResource extends AbstractContextResource {
 
             @Override
             public void run() {
+
+
+                logger.info( "Started rebuilding application {} in collection ", appId );
+
+
                 try {
                     emf.rebuildApplicationIndexes( appId, po );
                 }
                 catch ( Exception e ) {
                     logger.error( "Unable to re-index application", e );
                 }
+
+
+                logger.info( "Completed rebuilding application {} in collection ", appId );
             }
         };
 
@@ -166,6 +179,8 @@ public class IndexResource extends AbstractContextResource {
 
             public void run() {
 
+                logger.info( "Started rebuilding application {} in collection {}", appId, collectionName );
+
                 try {
                     rebuildCollection( appId, collectionName, reverse );
                 } catch (Exception e) {
@@ -173,6 +188,8 @@ public class IndexResource extends AbstractContextResource {
                     // TODO: handle this in rebuildCollection() instead
                     throw new RuntimeException("Error rebuilding collection");
                 }
+
+                logger.info( "Completed rebuilding application {} in collection {}", appId, collectionName );
             }
         };
 
@@ -212,12 +229,17 @@ public class IndexResource extends AbstractContextResource {
 
             @Override
             public void run() {
+
+                logger.info( "Started rebuilding internal indexes", appId );
+
                 try {
                     emf.rebuildInternalIndexes( po );
                 }
                 catch ( Exception e ) {
                     logger.error( "Unable to re-index internals", e );
                 }
+
+                logger.info( "Completed rebuilding internal indexes" );
             }
         };
 
@@ -238,6 +260,8 @@ public class IndexResource extends AbstractContextResource {
             Map<String, Object> config,
             @QueryParam( "callback" ) @DefaultValue( "callback" ) String callback)  throws Exception{
 
+        Preconditions.checkNotNull(config,"Payload for config is null, please pass {replicas:int, shards:int} in body");
+
         ApiResponse response = createApiResponse();
         final UUID appId = UUIDUtils.tryExtractUUID(applicationIdStr);
 
@@ -250,8 +274,9 @@ public class IndexResource extends AbstractContextResource {
             throw new IllegalArgumentException("Please add an indexSuffix to your post");
         }
 
+
         emf.addIndex(appId, config.get("indexSuffix").toString(),
-            (int) config.get("shards"),(int) config.get("replicas"));
+            (int) config.get("shards"),(int) config.get("replicas"),(String)config.get("writeConsistency"));
         response.setAction("Add index to alias");
 
         return new JSONWithPadding(response, callback);
@@ -275,7 +300,7 @@ public class IndexResource extends AbstractContextResource {
         logger.info( "Reindexing for app id: {} and collection {}", applicationId, collectionName );
 
         emf.rebuildCollectionIndex(applicationId, collectionName, reverse, po);
-        emf.refreshIndex();
+        getEntityIndex().refresh();
     }
 
 }

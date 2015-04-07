@@ -22,13 +22,14 @@ import com.google.common.cache.*;
 import com.google.inject.Injector;
 
 import org.apache.usergrid.corepersistence.CpSetup;
-import org.apache.usergrid.metrics.MetricsFactory;
 
 import org.apache.usergrid.persistence.EntityManager;
 import org.apache.usergrid.persistence.EntityManagerFactory;
 
+import org.apache.usergrid.persistence.core.metrics.MetricsFactory;
 import org.apache.usergrid.persistence.queue.*;
 import org.apache.usergrid.persistence.queue.QueueManager;
+import org.apache.usergrid.persistence.queue.impl.QueueScopeImpl;
 import org.apache.usergrid.services.ServiceManager;
 import org.apache.usergrid.services.ServiceManagerFactory;
 import org.apache.usergrid.services.notifications.impl.ApplicationQueueManagerImpl;
@@ -41,11 +42,12 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
-
+/**
+ * Singleton listens for notifications queue messages
+ */
 public class QueueListener  {
     public  final int MESSAGE_TRANSACTION_TIMEOUT =  25 * 1000;
     private final QueueManagerFactory queueManagerFactory;
-    private final QueueScopeFactory queueScopeFactory;
 
     public   long DEFAULT_SLEEP = 5000;
 
@@ -76,16 +78,13 @@ public class QueueListener  {
     public QueueManager TEST_QUEUE_MANAGER;
     private int consecutiveCallsToRemoveDevices;
 
-    public QueueListener(ServiceManagerFactory smf, EntityManagerFactory emf, MetricsFactory metricsService, Properties props){
+    public QueueListener(ServiceManagerFactory smf, EntityManagerFactory emf, Properties props){
         this.queueManagerFactory = smf.getApplicationContext().getBean( Injector.class ).getInstance(QueueManagerFactory.class);
         this.smf = smf;
         this.emf = emf;
-        this.metricsService = metricsService;
+        this.metricsService = smf.getApplicationContext().getBean( Injector.class ).getInstance(MetricsFactory.class);
         this.properties = props;
-        this.queueScopeFactory = smf.getApplicationContext().getBean( Injector.class ).getInstance(QueueScopeFactory.class);
-
     }
-
 
     /**
      * Start the service and begin consuming messages
@@ -99,6 +98,7 @@ public class QueueListener  {
             int threadCount = 0;
 
             try {
+
                 sleepBetweenRuns = new Long(properties.getProperty("usergrid.notifications.listener.sleep.between", ""+sleepBetweenRuns)).longValue();
                 sleepWhenNoneFound = new Long(properties.getProperty("usergrid.notifications.listener.sleep.after", ""+DEFAULT_SLEEP)).longValue();
                 batchSize = new Integer(properties.getProperty("usergrid.notifications.listener.batchSize", (""+batchSize)));
@@ -131,10 +131,6 @@ public class QueueListener  {
                 LOG.error("QueueListener: failed to start:", e);
             }
             LOG.info("QueueListener: done starting.");
-//        }else{
-//            LOG.info("QueueListener: never started due to config value usergrid.notifications.listener.run.");
-//        }
-
     }
 
     private void execute(){
@@ -149,7 +145,7 @@ public class QueueListener  {
         com.codahale.metrics.Timer timer = metricsService.getTimer(QueueListener.class, "dequeue");
         svcMgr = smf.getServiceManager(smf.getManagementAppId());
         LOG.info("getting from queue {} ", queueName);
-        QueueScope queueScope = queueScopeFactory.getScope(smf.getManagementAppId(), queueName);
+        QueueScope queueScope = new QueueScopeImpl( queueName ) {};
         QueueManager queueManager = TEST_QUEUE_MANAGER != null ? TEST_QUEUE_MANAGER : queueManagerFactory.getQueueManager(queueScope);
         // run until there are no more active jobs
         long runCount = 0;

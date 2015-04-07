@@ -23,7 +23,10 @@ package org.apache.usergrid.rest.test.resource2point0;
 
 import java.io.IOException;
 
+import org.apache.usergrid.rest.test.resource2point0.model.ApiResponse;
 import org.apache.usergrid.rest.test.resource2point0.model.Application;
+import org.apache.usergrid.rest.test.resource2point0.model.Credentials;
+import org.apache.usergrid.rest.test.resource2point0.model.Entity;
 import org.apache.usergrid.rest.test.resource2point0.model.Token;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
@@ -41,8 +44,17 @@ import javax.ws.rs.core.MediaType;
 public class ClientSetup implements TestRule {
 
     RestClient restClient;
-    //TODO: store the password as a string here as well
-    protected String username, orgName, appName;
+
+    protected String username;
+    protected String password;
+    protected String orgName;
+    protected String appName;
+    protected String appUuid;
+    protected Token superuserToken;
+    protected String superuserName = "superuser";
+    protected String superuserPassword = "superpassword";
+    protected Credentials clientCredentials;
+
     protected Organization organization;
     protected Application application;
 
@@ -83,25 +95,62 @@ public class ClientSetup implements TestRule {
         String methodName = description.getMethodName();
         String name = testClass + "." + methodName;
 
+        restClient.superuserSetup();
+        superuserToken = restClient.management().token().post(Token.class, new Token( superuserName, superuserPassword ) );
+        restClient.management().token().setToken( superuserToken );
+
+
         username = "user_"+name + UUIDUtils.newTimeUUID();
+        password = username;
         orgName = "org_"+name+UUIDUtils.newTimeUUID();
         appName = "app_"+name+UUIDUtils.newTimeUUID();
 
-        organization = restClient.management().orgs().post(new Organization( orgName,username,username+"@usergrid.com",username,username, null  ));
+        organization = restClient.management().orgs()
+                                 .post( new Organization( orgName, username, username + "@usergrid.com", username,
+                                     username, null ) );
+        refreshIndex();
+        clientCredentials = restClient.management().orgs().organization( orgName ).credentials().get();
+        refreshIndex();
 
-        restClient.management().token().post(new Token(username,username));
+        //restClient.management().token().post(Token.class,new Token(username,password));
 
-        restClient.management().orgs().organization(organization.getName()).app().post(new Application(appName));
+        ApiResponse appResponse = restClient.management().orgs().organization(organization.getName()).app().post(new Application(appName));
+        appUuid = ( String ) appResponse.getEntities().get( 0 ).get( "uuid" );
+        refreshIndex();
 
     }
 
     public String getUsername(){return username;}
+
+    public String getEmail(){return username+"@usergrid.com";}
+
+    public String getPassword(){return password;}
 
     public Organization getOrganization(){return organization;}
 
     public String getOrganizationName(){return orgName;}
 
     public String getAppName() {return appName;}
+
+    public String getAppUuid() {
+        return appUuid;
+    }
+
+    public Token getSuperuserToken() {
+        return superuserToken;
+    }
+
+    public String getSuperuserName() {
+        return superuserName;
+    }
+
+    public String getSuperuserPassword() {
+        return superuserPassword;
+    }
+
+    public Credentials getClientCredentials() {
+        return clientCredentials;
+    }
 
     public void refreshIndex() {
         this.restClient.refreshIndex(getOrganizationName(),getAppName());

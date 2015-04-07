@@ -50,12 +50,8 @@ public class UsersResource extends NamedResource {
         return new EntityEndpoint(identifier, context, this);
     }
 
-    public Entity post(Entity userPayload){
-        WebResource resource = getResource(true);
-//TODO: need to parse the specific response gotten for admin entities. It is different from regular entities.
-        ApiResponse response = resource.type( MediaType.APPLICATION_JSON_TYPE )
-                .accept( MediaType.APPLICATION_JSON ).post( ApiResponse.class, userPayload);
-        return new Entity(response);
+    public UserResource user(String identifier) {
+        return new UserResource( identifier, context, this );
     }
 
 }

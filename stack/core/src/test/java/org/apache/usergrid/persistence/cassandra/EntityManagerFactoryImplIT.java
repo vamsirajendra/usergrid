@@ -23,11 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.apache.usergrid.Application;
+import org.apache.usergrid.CoreApplication;
 import org.apache.usergrid.persistence.*;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.usergrid.utils.UUIDUtils;
+import org.junit.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +39,13 @@ import org.apache.usergrid.persistence.cassandra.util.TraceTagManager;
 import org.apache.usergrid.persistence.cassandra.util.TraceTagReporter;
 import org.apache.usergrid.persistence.model.util.UUIDGenerator;
 import org.apache.usergrid.setup.ConcurrentProcessSingleton;
+import rx.functions.Func0;
+import rx.functions.Func1;
+import rx.functions.Func2;
 
+import javax.annotation.concurrent.NotThreadSafe;
+
+import static org.apache.usergrid.persistence.Schema.PROPERTY_APPLICATION_ID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -47,7 +53,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-
+@NotThreadSafe
 public class EntityManagerFactoryImplIT extends AbstractCoreIT {
 
     private static final Logger logger = LoggerFactory.getLogger( EntityManagerFactoryImplIT.class );
@@ -57,6 +63,10 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
     public EntityManagerFactoryImplIT() {
         emf = ConcurrentProcessSingleton.getInstance().getSpringResource().getBean( EntityManagerFactory.class );
     }
+
+    @Rule
+    public Application app = new CoreApplication( setup );
+
 
 
     @BeforeClass
@@ -77,7 +87,10 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
 
 
     public UUID createApplication( String organizationName, String applicationName ) throws Exception {
-        return emf.createApplication( organizationName, applicationName );
+        Entity appInfo = emf.createApplicationV2(organizationName, applicationName);
+        UUID appId = UUIDUtils.tryExtractUUID(
+            appInfo.getProperty(PROPERTY_APPLICATION_ID).toString());
+        return appId;
     }
 
 
@@ -93,13 +106,17 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
     @Test
     public void testDeleteApplication() throws Exception {
 
+        int maxRetries = 10;
+
         String rand = UUIDGenerator.newTimeUUID().toString();
 
         // create an application with a collection and an entity
 
-        UUID applicationId = setup.createApplication( "test-org-" + rand, "test-app-" + rand );
+        String appName = "test-app-" + rand;
+        String orgName = "test-org-" + rand;
+        final UUID deletedAppId = setup.createApplication( orgName, appName );
 
-        EntityManager em = setup.getEmf().getEntityManager( applicationId );
+        EntityManager em = setup.getEmf().getEntityManager(deletedAppId);
 
         Map<String, Object> properties1 = new LinkedHashMap<String, Object>();
         properties1.put( "Name", "12 Angry Men" );
@@ -111,78 +128,115 @@ public class EntityManagerFactoryImplIT extends AbstractCoreIT {
         properties2.put( "Year", 1992 );
         Entity film2 = em.create( "film", properties2 );
 
-        em.refreshIndex();
+        for ( int j=0; j<maxRetries; j++ ) {
+            if ( setup.getEmf().lookupApplication( orgName + "/" + appName ) != null ) {
+                break;
+            }
+            Thread.sleep( 500 );
+        }
 
-        // TODO: this assertion should work!
-        //assertNotNull( "cannot lookup app by name", setup.getEmf().lookupApplication("test-app-" + rand) );
+        this.app.refreshIndex();
 
         // delete the application
 
-        setup.getEmf().deleteApplication( applicationId );
+        setup.getEmf().deleteApplication(deletedAppId);
+        this.app.refreshIndex();
 
-        em.refreshIndex();
+        // wait for it to appear in delete apps list
+
+        Func2<UUID, Map<String, UUID> ,Boolean> findApps = new Func2<UUID,Map<String, UUID> ,Boolean>() {
+            @Override
+            public Boolean call(UUID applicationId,  Map<String, UUID> apps) {
+                boolean found = false;
+                for (String appName : apps.keySet()) {
+                    UUID appId = apps.get(appName);
+                    if (appId.equals(applicationId)) {
+                        found = true;
+                        break;
+                    }
+                }
+                return found;
+            }
+        };
+        this.app.refreshIndex();
 
         boolean found = false;
-        Map<String, UUID> deletedApps = emf.getDeletedApplications();
-        for ( String appName : deletedApps.keySet() ) {
-            UUID appId = deletedApps.get( appName );
-            if ( appId.equals( applicationId )) {
-                found = true;
+        for ( int i=0; i<maxRetries; i++) {
+            found = findApps.call( deletedAppId, emf.getDeletedApplications() );
+            if ( found ) {
                 break;
+            } else {
+                Thread.sleep( 500 );
             }
         }
-
-        assertTrue("Deleted app not found in deleted apps collection", found );
+        assertTrue( "Deleted app must be found in in deleted apps collection", found );
+        this.app.refreshIndex();
 
         // attempt to get entities in application's collections in various ways should all fail
 
-        assertNull( setup.getEmf().lookupApplication("test-app-" + rand) );
-
-        Map<String, UUID> appMap = setup.getEmf().getApplications();
-        for ( String appName : appMap.keySet() ) {
-            UUID appId = appMap.get( appName );
-            assertNotEquals( appId, applicationId );
-            assertNotEquals( appName, "test-app-" + rand );
+        for ( int i=0; i<maxRetries; i++ ) {
+            found = ( setup.getEmf().lookupApplication( orgName + "/" + appName ) != null );
+            if ( found ) {
+                Thread.sleep( 500 );
+            } else {
+                break;
+            }
         }
+        assertFalse( "Lookup of deleted app must fail", found );
+
+        // app must not be found in apps collection
+        this.app.refreshIndex();
+
+        for ( int i=0; i<maxRetries; i++ ) {
+            found = findApps.call( deletedAppId, emf.getApplications() );
+            if ( found ) {
+                Thread.sleep( 500 );
+            } else {
+                break;
+            }
+        }
+        assertFalse("Deleted app must not be found in apps collection", found);
 
         // restore the app
 
-        emf.restoreApplication( applicationId );
+        this.app.refreshIndex();
+
+
+        emf.restoreApplication(deletedAppId);
 
         emf.rebuildAllIndexes(new EntityManagerFactory.ProgressObserver() {
             @Override
             public void onProgress(EntityRef entity) {
-                logger.debug("Reindexing {}:{}", entity.getType(), entity.getUuid() );
+                logger.debug("Reindexing {}:{}", entity.getType(), entity.getUuid());
             }
         });
 
         // test to see that app now works and is happy
 
         // it should not be found in the deleted apps collection
-        found = false;
-        deletedApps = emf.getDeletedApplications();
-        for ( String appName : deletedApps.keySet() ) {
-            UUID appId = deletedApps.get( appName );
-            if ( appId.equals( applicationId )) {
-                found = true;
+        for ( int i=0; i<maxRetries; i++ ) {
+            found = findApps.call( deletedAppId, emf.getDeletedApplications() );
+            if ( !found ) {
                 break;
+            } else {
+                Thread.sleep( 500 );
             }
         }
         assertFalse("Restored app found in deleted apps collection", found);
+        this.app.refreshIndex();
 
-        found = false;
-        appMap = setup.getEmf().getApplications();
-        for ( String appName : appMap.keySet() ) {
-            UUID appId = appMap.get( appName );
-            if ( appId.equals( applicationId )) {
-                found = true;
+        for(int i=0;i<maxRetries;i++){
+            found = findApps.call(deletedAppId,setup.getEmf().getApplications());
+            if(!found){
                 break;
+            } else{
+                Thread.sleep(500);
             }
         }
         assertTrue("Restored app not found in apps collection", found);
 
         // TODO: this assertion should work!
-        //assertNotNull(setup.getEmf().lookupApplication("test-app-" + rand));
+        assertNotNull(setup.getEmf().lookupApplication( orgName + "/" + appName ));
     }
 
 

@@ -89,10 +89,8 @@
 
   <bean id="exportJob" class="org.apache.usergrid.management.export.ExportJob" />
 
-  <bean id="notificationsQueueListener" class="org.apache.usergrid.services.notifications.QueueListener"
-        scope="singleton">
+  <bean id="notificationsQueueListener" class="org.apache.usergrid.services.notifications.QueueListener">
     <constructor-arg name="emf" ref="entityManagerFactory" />
-    <constructor-arg name="metricsService" ref="metricsFactory" />
     <constructor-arg name="props" ref="properties" />
     <constructor-arg name="smf" ref="serviceManagerFactory" />
   </bean>
@@ -105,10 +103,10 @@
 
     <!--<bean id="importQueueListener" class="org.apache.usergrid.services.queues.ImportQueueListener"-->
           <!--scope="singleton">-->
-        <!--<constructor-arg name="emf" ref="entityManagerFactory" />-->
-        <!--<constructor-arg name="metricsService" ref="metricsFactory" />-->
-        <!--<constructor-arg name="smf" ref="serviceManagerFactory" />-->
-        <!--<constructor-arg name="props" ref="properties" />-->
+        <!--<constructor-arg orgAppName="emf" ref="entityManagerFactory" />-->
+        <!--<constructor-arg orgAppName="metricsService" ref="metricsFactory" />-->
+        <!--<constructor-arg orgAppName="smf" ref="serviceManagerFactory" />-->
+        <!--<constructor-arg orgAppName="props" ref="properties" />-->
 
     <!--</bean>-->
 

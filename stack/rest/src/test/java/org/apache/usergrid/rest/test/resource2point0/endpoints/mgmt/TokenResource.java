@@ -35,48 +35,27 @@ public class TokenResource extends NamedResource {
         super("token", context, parent);
     }
 
-
     /**
      * Obtains an access token and sets the token for the context to use in later calls
      *
      * @return
      */
-    public Token post() {
-        Token token = getResource().type(MediaType.APPLICATION_JSON_TYPE)
-            .accept(MediaType.APPLICATION_JSON).post(Token.class);
-        this.context.setToken(token);
-        return token;
-    }
-
-    /**
-     * Obtains an access token and sets the token for the context to use in later calls
-     *
-     * @return
-     */
-    public Token post(QueryParameters params) {
+    public Token get(QueryParameters params) {
         WebResource resource = getResource();
         resource = addParametersToResource(resource, params);
         Token token = resource.type(MediaType.APPLICATION_JSON_TYPE).accept(MediaType.APPLICATION_JSON)
-            .get(Token.class);
+                              .get(Token.class);
 
         this.context.setToken(token);
         return token;
     }
 
+
     /**
-     * Obtains an access token and sets the token for the context to use in later calls
-     *
+     * Convinece method to set the token needed for each call.
      * @param token
      * @return
      */
-    public Token post(Token token) {
-        token = getResource().type(MediaType.APPLICATION_JSON_TYPE)
-            .accept(MediaType.APPLICATION_JSON).post(Token.class, token);
-        this.context.setToken(token);
-        return token;
-    }
-
-
     public TokenResource setToken(Token token) {
         this.context.setToken(token);
         return this;

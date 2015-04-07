@@ -18,6 +18,8 @@
 package org.apache.usergrid.persistence.map;
 
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 
 
@@ -33,10 +35,26 @@ public interface MapManager {
      */
     public String getString( final String key );
 
+
+    /**
+     * Get the values for all the keys.  If a value does not exist, it won't be present in the map
+     * @param keys
+     * @return
+     */
+    public Map<String, String> getStrings(final Collection<String> keys);
+
     /**
      * Return the string, null if not found
      */
     public void putString( final String key, final String value );
+
+    /**
+     * The time to live (in seconds) of the string
+     * @param key
+     * @param value
+     * @param ttl
+     */
+    public void putString( final String key, final String value, final int ttl );
 
 
     /**
