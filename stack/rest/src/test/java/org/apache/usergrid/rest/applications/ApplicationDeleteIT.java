@@ -34,7 +34,10 @@ import static org.junit.Assert.fail;
 
 
 public class ApplicationDeleteIT extends AbstractRestIT {
+
     private static final Logger logger = LoggerFactory.getLogger(ApplicationDeleteIT.class);
+
+    public static final int INDEXING_WAIT = 3000;
 
 
     /**
@@ -207,7 +210,7 @@ public class ApplicationDeleteIT extends AbstractRestIT {
             .queryParam("app_delete_confirm", "confirm_delete_of_application_and_data")
             .delete();
 
-        Thread.sleep(1000);
+        Thread.sleep(INDEXING_WAIT);
 
         // restore the app
 
@@ -217,6 +220,8 @@ public class ApplicationDeleteIT extends AbstractRestIT {
             .org(orgName).app( appToDeleteId.toString() ).getResource()
             .queryParam("access_token", orgAdminToken.getAccessToken() )
             .put();
+
+        Thread.sleep(INDEXING_WAIT);
 
         // test that we can see the application in the list of applications
 
@@ -359,6 +364,8 @@ public class ApplicationDeleteIT extends AbstractRestIT {
             .type( MediaType.APPLICATION_JSON )
             .post( ApiResponse.class, new Application( appName ) );
         UUID appId = appCreateResponse.getEntities().get(0).getUuid();
+
+        try { Thread.sleep(INDEXING_WAIT); } catch (InterruptedException ignored ) { }
 
         for ( int i=0; i<10; i++ ) {
 

@@ -114,6 +114,7 @@ public class ApplicationCreateIT extends AbstractRestIT {
             .post( ApiResponse.class, new Application( appName ) );
         UUID appId = appCreateResponse.getEntities().get(0).getUuid();
 
+        try { Thread.sleep(1000); } catch (InterruptedException ignored ) { }
 
         for ( int i=0; i<5; i++ ) {
 
