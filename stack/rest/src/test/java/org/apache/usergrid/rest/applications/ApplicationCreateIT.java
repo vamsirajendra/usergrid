@@ -36,6 +36,7 @@ import javax.ws.rs.core.MediaType;
 import java.util.*;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 
@@ -57,19 +58,19 @@ public class ApplicationCreateIT extends AbstractRestIT {
         Token orgAdminToken = getAdminToken(clientSetup.getUsername(), clientSetup.getUsername());
 
         ApiResponse appCreateResponse = clientSetup.getRestClient()
-            .management().orgs().organization( orgName ).app().getResource()
-            .queryParam( "access_token", orgAdminToken.getAccessToken() )
+            .management().orgs().organization(orgName).app().getResource()
+            .queryParam("access_token", orgAdminToken.getAccessToken())
             .type( MediaType.APPLICATION_JSON )
             .post(ApiResponse.class, new Application(appName));
         appCreateResponse.getEntities().get(0).getUuid();
 
-        // should be able to immediate get the application's roles collection
+        // should be able to immediately get the application's roles collection
 
-        String response = clientSetup.getRestClient().getResource()
+        ApiResponse response = clientSetup.getRestClient().getResource()
             .path("/" + clientSetup.getOrganizationName() + "/" + appName + "/roles" )
-            .get(String.class);
-        logger.error( response );
-
+            .queryParam( "access_token", orgAdminToken.getAccessToken() )
+            .get(ApiResponse.class);
+        assertTrue( !response.getEntities().isEmpty() );
     }
 
 

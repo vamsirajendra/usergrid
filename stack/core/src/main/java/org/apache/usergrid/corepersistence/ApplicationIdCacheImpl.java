@@ -111,16 +111,7 @@ public class ApplicationIdCacheImpl implements ApplicationIdCache {
                 CpNamingUtils.APPLICATION_INFO, new StringField(Schema.PROPERTY_NAME, applicationName));
 
             Id id = idObs.toBlocking().lastOrDefault(null);
-            UUID applicationInfoId = id.getUuid();
-
-            // get the application_info by ID
-            Entity applicationInfo = ecm.load(
-                new SimpleId( applicationInfoId, CpNamingUtils.APPLICATION_INFO ))
-            .toBlocking().lastOrDefault( null );
-
-            // extract application UUID from application_info
-            value = UUIDUtils.tryExtractUUID(
-                applicationInfo.getField( PROPERTY_APPLICATION_ID ).getValue().toString() );
+            value = id.getUuid();
 
             logger.debug("Loaded for key {} value {}", applicationName, value );
             return value;

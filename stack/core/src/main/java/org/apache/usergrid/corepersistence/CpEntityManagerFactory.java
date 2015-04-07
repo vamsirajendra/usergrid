@@ -371,10 +371,12 @@ public class CpEntityManagerFactory implements EntityManagerFactory, Application
 
         EntityManager em = getEntityManager(getManagementAppId());
 
-        final Results results = em.searchCollection(
-            em.getApplicationRef(), CpNamingUtils.DELETED_APPLICATION_INFOS,
-            Query.fromQL("select * where " + PROPERTY_APPLICATION_ID + " = '" + applicationId.toString() + "'"));
-        Entity deletedAppInfo = results.getEntity();
+//        final Results results = em.searchCollection(
+//            em.getApplicationRef(), CpNamingUtils.DELETED_APPLICATION_INFOS,
+//            Query.fromQL("select * where " + PROPERTY_APPLICATION_ID + " = '" + applicationId.toString() + "'"));
+//        Entity deletedAppInfo = results.getEntity();
+
+        Entity deletedAppInfo = em.get( new SimpleEntityRef( Schema.TYPE_APPLICATION, applicationId ));
 
         if ( deletedAppInfo == null ) {
             throw new EntityNotFoundException("Cannot restore. Deleted Application not found: " + applicationId );
@@ -489,8 +491,10 @@ public class CpEntityManagerFactory implements EntityManagerFactory, Application
                 return;
             }
 
-            UUID applicationId = UUIDUtils.tryExtractUUID(
-                appInfo.getField(PROPERTY_APPLICATION_ID).getValue().toString());
+            UUID applicationId = appInfo.getId().getUuid();
+
+//            UUID applicationId = UUIDUtils.tryExtractUUID(
+//                appInfo.getField(PROPERTY_APPLICATION_ID).getValue().toString());
 
             appMap.put((String) appInfo.getField(PROPERTY_NAME).getValue(), applicationId);
         }).toBlocking().lastOrDefault(null);
