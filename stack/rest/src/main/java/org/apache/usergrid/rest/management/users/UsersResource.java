@@ -17,6 +17,7 @@
 package org.apache.usergrid.rest.management.users;
 
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -32,14 +33,24 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
 import org.apache.usergrid.management.exceptions.ManagementException;
+import org.apache.usergrid.management.export.ExportService;
 import org.apache.usergrid.rest.RootResource;
+import org.apache.usergrid.rest.applications.ServiceResource;
+import org.apache.usergrid.rest.security.annotations.RequireSystemAccess;
+import org.apache.usergrid.rest.utils.JSONPUtils;
 import org.apache.usergrid.services.exceptions.ServiceResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import org.apache.amber.oauth2.common.exception.OAuthSystemException;
+import org.apache.amber.oauth2.common.message.OAuthResponse;
+
 import org.apache.usergrid.management.UserInfo;
 import org.apache.usergrid.rest.AbstractContextResource;
 import org.apache.usergrid.rest.ApiResponse;
@@ -52,6 +63,11 @@ import com.sun.jersey.api.view.Viewable;
 
 import net.tanesha.recaptcha.ReCaptchaImpl;
 import net.tanesha.recaptcha.ReCaptchaResponse;
+
+import static javax.servlet.http.HttpServletResponse.SC_ACCEPTED;
+import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
+import static javax.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 
 import static org.apache.commons.lang.StringUtils.isBlank;
 import static org.apache.usergrid.rest.exceptions.SecurityException.mappableSecurityException;
@@ -66,6 +82,8 @@ public class UsersResource extends AbstractContextResource {
 
     private static final Logger logger = LoggerFactory.getLogger( UsersResource.class );
 
+    @Autowired
+    protected ExportService exportService;
     String errorMsg;
     UserInfo user;
 
@@ -217,6 +235,70 @@ public class UsersResource extends AbstractContextResource {
         catch ( Exception e ) {
             return handleViewable( "error", e );
         }
+    }
+
+    @POST
+    @Path( "export" )
+    @Consumes(APPLICATION_JSON)
+    @RequireSystemAccess
+    public Response exportPostJson( @Context UriInfo ui,Map<String, Object> json,
+                                    @QueryParam("callback") @DefaultValue("") String callback )
+        throws OAuthSystemException {
+
+        UUID jobUUID = null;
+        Map<String, String> uuidRet = new HashMap<String, String>();
+
+        Map<String,Object> properties;
+        Map<String, Object> storage_info;
+
+        try {
+            //checkJsonExportProperties(json);
+            if((properties = ( Map<String, Object> )  json.get( "properties" )) == null){
+                throw new NullPointerException("Could not find 'properties'");
+            }
+            storage_info = ( Map<String, Object> ) properties.get( "storage_info" );
+            String storage_provider = ( String ) properties.get( "storage_provider" );
+            if(storage_provider == null) {
+                throw new NullPointerException( "Could not find field 'storage_provider'" );
+            }
+            if(storage_info == null) {
+                throw new NullPointerException( "Could not find field 'storage_info'" );
+            }
+
+
+            String bucketName = ( String ) storage_info.get( "bucket_location" );
+            String accessId = ( String ) storage_info.get( "s3_access_id" );
+            String secretKey = ( String ) storage_info.get( "s3_key" );
+
+            if(bucketName == null) {
+                throw new NullPointerException( "Could not find field 'bucketName'" );
+            }
+            if(accessId == null) {
+                throw new NullPointerException( "Could not find field 's3_access_id'" );
+            }
+            if(secretKey == null) {
+                throw new NullPointerException( "Could not find field 's3_key'" );
+            }
+
+
+            jobUUID = exportService.schedule( json );
+            uuidRet.put( "Export Entity", jobUUID.toString() );
+        }
+        catch ( NullPointerException e ) {
+            return Response.status( SC_BAD_REQUEST ).type( JSONPUtils.jsonMediaType( callback ) )
+                           .entity( ServiceResource.wrapWithCallback( e.getMessage(), callback ) ).build();
+        }
+        catch ( Exception e ) {
+            //TODO:throw descriptive error message and or include on in the response
+            //TODO:fix below, it doesn't work if there is an exception. Make it look like the OauthResponse.
+            OAuthResponse errorMsg =
+                    OAuthResponse.errorResponse( SC_INTERNAL_SERVER_ERROR ).setErrorDescription( e.getMessage() )
+                                 .buildJSONMessage();
+            return Response.status( errorMsg.getResponseStatus() ).type( JSONPUtils.jsonMediaType( callback ) )
+                           .entity( ServiceResource.wrapWithCallback( errorMsg.getBody(), callback ) ).build();
+        }
+
+        return Response.status( SC_ACCEPTED ).entity( uuidRet ).build();
     }
 
 
