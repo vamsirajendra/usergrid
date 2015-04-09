@@ -19,7 +19,10 @@ package org.apache.usergrid.management.cassandra;
 
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -67,6 +70,7 @@ import com.google.inject.Module;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -698,8 +702,8 @@ public class ExportServiceIT {
     }
 
 
-    @Ignore //For this test please input your s3 credentials into settings.xml or Attach a -D with relevant fields.
-   // @Test
+    //@Ignore //For this test please input your s3 credentials into settings.xml or Attach a -D with relevant fields.
+    @Test
     public void testIntegration100EntitiesOn() throws Exception {
 
         S3Export s3Export = new S3ExportImpl();
@@ -780,15 +784,16 @@ public class ExportServiceIT {
 
         }
         catch ( Exception e ) {
-            assert ( false );
+            throw e;
+            //assert ( false );
         }
 
         assertNotNull( bo );
         blobStore.deleteContainer( bucketName );
     }
 
-    @Ignore
-   // @Test
+  //  @Ignore
+    @Test
     public void testIntegration100EntitiesForAllApps() throws Exception {
 
         S3Export s3Export = new S3ExportImpl();
@@ -863,6 +868,110 @@ public class ExportServiceIT {
             blobStore.deleteContainer( bucketName );
             //asserts that the correct number of files was transferred over
             assertEquals( numWeWant, numOfFiles );
+        }
+        catch ( Exception e ) {
+            blobStore.deleteContainer( bucketName );
+            e.printStackTrace();
+            assert ( false );
+        }
+
+        assertNotNull( bo );
+    }
+
+    @Test
+    public void testIntegration100EntitiesForAllAppsMANAGEMENT() throws Exception {
+
+        S3Export s3Export = new S3ExportImpl();
+        ExportService exportService = setup.getExportService();
+        HashMap<String, Object> payload = payloadBuilder();
+
+        OrganizationInfo orgMade = null;
+        ApplicationInfo appMade = null;
+        for ( int i = 0; i < 5; i++ ) {
+            orgMade = setup.getMgmtSvc().createOrganization( "minorboss" + i, adminUser, true );
+            for ( int j = 0; j < 5; j++ ) {
+                appMade = setup.getMgmtSvc().createApplication( orgMade.getUuid(), "superapp" + j );
+
+                EntityManager customMaker = setup.getEmf().getEntityManager( appMade.getId() );
+                customMaker.createApplicationCollection( "superappCol" + j );
+                //intialize user object to be posted
+                Map<String, Object> entityLevelProperties = null;
+                Entity[] entNotCopied;
+                entNotCopied = new Entity[1];
+                //creates entities
+                for ( int index = 0; index < 1; index++ ) {
+                    entityLevelProperties = new LinkedHashMap<String, Object>();
+                    entityLevelProperties.put( "derp", "bacon" );
+                    entNotCopied[index] = customMaker.create( "superappCol" + j, entityLevelProperties );
+                }
+            }
+        }
+
+        for ( int i = 0; i < 100; i++ ){
+            String adminUserPlaceHolder = "test"+i;
+            setup.getMgmtSvc().createAdminUser( adminUserPlaceHolder,adminUserPlaceHolder,adminUserPlaceHolder,adminUserPlaceHolder,true,false );
+        }
+
+        payload.put( "organizationId", null);
+
+        UUID exportUUID = exportService.schedule( payload );
+        assertNotNull( exportUUID );
+
+        //create and initialize jobData returned in JobExecution.
+        JobData jobData = jobDataCreator( payload,exportUUID,s3Export );
+
+        JobExecution jobExecution = mock( JobExecution.class );
+        when( jobExecution.getJobData() ).thenReturn( jobData );
+
+        exportService.doExport( jobExecution );
+
+        Thread.sleep( 3000 );
+
+        String bucketName = System.getProperty( "bucketName" );
+        String accessId = System.getProperty( "accessKey" );
+        String secretKey = System.getProperty( "secretKey" );
+
+        Properties overrides = new Properties();
+        overrides.setProperty( "s3" + ".identity", accessId );
+        overrides.setProperty( "s3" + ".credential", secretKey );
+
+        Blob bo = null;
+        BlobStore blobStore = null;
+
+        try {
+            final Iterable<? extends Module> MODULES = ImmutableSet
+                    .of( new JavaUrlHttpCommandExecutorServiceModule(), new Log4JLoggingModule(),
+                            new NettyPayloadModule() );
+
+            BlobStoreContext context =
+                    ContextBuilder.newBuilder( "s3" ).credentials( accessId, secretKey ).modules( MODULES )
+                                  .overrides( overrides ).buildView( BlobStoreContext.class );
+
+
+            blobStore = context.getBlobStore();
+
+            //Grab Number of files
+            Long numOfFiles = blobStore.countBlobs( bucketName );
+            //delete container containing said files
+            bo = blobStore.getBlob( bucketName, s3Export.getFilename() );
+            InputStream temp = bo.getPayload().openStream();
+            File derp = new File("AdminExport.json");
+
+            FileOutputStream fop = new FileOutputStream( derp );
+            bo.getPayload().writeTo( fop );
+            fop.close();
+
+            //Long numWeWant = Long.valueOf( 5 );
+            blobStore.deleteContainer( bucketName );
+            //asserts that the correct number of files was transferred over
+            //assertEquals( numWeWant, numOfFiles );
+
+            JSONParser parser = new JSONParser();
+
+            org.json.simple.JSONArray a = ( org.json.simple.JSONArray ) parser.parse( new FileReader( derp ) );
+
+        /*Does a check that we have a least 100 admins */
+            assertTrue( 100 < a.size() );
         }
         catch ( Exception e ) {
             blobStore.deleteContainer( bucketName );

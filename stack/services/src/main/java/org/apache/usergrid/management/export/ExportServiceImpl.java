@@ -225,7 +225,8 @@ public class ExportServiceImpl implements ExportService {
         if ( config.get( "organizationId" ) == null ) {
             //Since this would happen without an organization id ( a case that is impossible using it regularly
             //then they could only reach this code with system level access.
-            exportApplicationFromOrg( null, MANAGEMENT_APPLICATION_ID,config,jobExecution,s3Export );
+            config.put( "collectionName","users" );
+            exportCollectionFromOrgApp( MANAGEMENT_APPLICATION_ID,config,jobExecution,s3Export );
             em.update( export );
             return;
         }
