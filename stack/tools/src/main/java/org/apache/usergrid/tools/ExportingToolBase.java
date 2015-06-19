@@ -52,6 +52,7 @@ public abstract class ExportingToolBase extends ToolBase {
 
     protected String baseOutputDirName = "export";
     protected UUID orgId;
+    protected String appName;
     JsonFactory jsonFactory = new JsonFactory();
     protected long startTime = System.currentTimeMillis();
 
@@ -81,6 +82,11 @@ public abstract class ExportingToolBase extends ToolBase {
         }
     }
 
+    protected  void applyAppName( CommandLine line) {
+        if ( line.hasOption( "appName" ) ) {
+            appName =ConversionUtils.string( line.getOptionValue( "appName" ) ).toLowerCase();
+        }
+    }
 
     protected void applyOrgId( CommandLine line ) {
         if ( line.hasOption( "orgId" ) ) {
