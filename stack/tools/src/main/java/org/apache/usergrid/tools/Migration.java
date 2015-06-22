@@ -23,9 +23,12 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
+
+import org.apache.usergrid.management.OrganizationInfo;
 import org.apache.usergrid.persistence.*;
 import org.apache.usergrid.persistence.Results.Level;
 import org.apache.usergrid.persistence.cassandra.CassandraService;
+import org.apache.usergrid.persistence.entities.Application;
 import org.apache.usergrid.utils.JsonUtils;
 import org.apache.usergrid.utils.StringUtils;
 import org.codehaus.jackson.JsonGenerator;
@@ -78,6 +81,7 @@ public class Migration extends ExportingToolBase {
 
         setVerbose( line );
 
+        applyOrgId( line );
         //Checks for the application name that we want to export.
         applyAppName( line );
         if ( appName == null ){
@@ -97,7 +101,7 @@ public class Migration extends ExportingToolBase {
                 return;
             }
         } else {
-            readThreadCount = 20;
+            readThreadCount = 1;
         }
 
         // start write queue worker
@@ -125,19 +129,13 @@ public class Migration extends ExportingToolBase {
         Query query = new Query();
         query.setLimit( MAX_ENTITY_FETCH );
         query.setResultsLevel( Level.IDS );
-        //EntityManager em = emf.getEntityManager( CassandraService.MANAGEMENT_APPLICATION_ID );
-
 
         //Retrieve application that was given to the exporter
-        UUID applicationUuid = emf.lookupApplication( "applicationName" );
+        OrganizationInfo organizationInfo = managementService.getOrganizationByUuid( orgId );
+        Application exportedApplication = emf.getApplication( organizationInfo.getName()+"/"+appName  );
+        UUID applicationUuid = exportedApplication.getUuid();
+        readQueue.add( applicationUuid );
         EntityManager em = emf.getEntityManager( applicationUuid );
-        //get all the collection names in an application
-        Iterator<String> collections = em.getApplicationCollections().iterator();
-//        while(collections.hasNext()){
-//            String collectionName = collections.next();
-//            managementService.get
-//            em.getCollection
-//        }
 
         Map<String, Object> metadata = em.getApplicationCollectionMetadata();
         echo( JsonUtils.mapToFormattedJsonString( metadata ) );
@@ -150,18 +148,21 @@ public class Migration extends ExportingToolBase {
             query.setLimit( MAX_ENTITY_FETCH );
             query.setResultsLevel( Level.IDS );
 
+            //loop until you get no cursor back.
             Results ids = em.searchCollection( em.getApplicationRef(), collectionName, query );
-            for (UUID uuid : ids.getIds()) {
-                readQueue.add( uuid );
-                logger.debug( "Added uuid to readQueue: " + uuid );
-            }
-            if (ids.getCursor() == null) {
-                break;
-            }
+            while(true) {
+                for ( UUID uuid : ids.getIds() ) {
+                    readQueue.add( uuid );
+                    logger.debug( "Added uuid to readQueue: " + uuid );
+                }
+                if ( ids.getCursor() == null ) {
+                    break;
+                }
 
                 query.setCursor( ids.getCursor() );
 
                 ids = em.searchCollection( em.getApplicationRef(), collectionName, query );
+            }
         }
 
         adminUserWriter.setDone( true );
@@ -174,7 +175,8 @@ public class Migration extends ExportingToolBase {
     }
 
     public EntityManager applicationEntityManagerCreator() throws Exception{
-        UUID applicationUuid = emf.lookupApplication( appName );
+        OrganizationInfo organizationInfo = managementService.getOrganizationByUuid( orgId );
+        UUID applicationUuid = emf.lookupApplication( organizationInfo.getName()+"/"+appName);
         return emf.getEntityManager( applicationUuid );
     }
 
@@ -187,7 +189,10 @@ public class Migration extends ExportingToolBase {
         Option readThreads = OptionBuilder
                 .hasArg().withType(0).withDescription("Read Threads -" + READ_THREAD_COUNT).create(READ_THREAD_COUNT);
 
+        Option appName = OptionBuilder.hasArg().withType( 0 ).withDescription( "Application Name =").create( "appName" );
+
         options.addOption( readThreads );
+        options.addOption( appName );
         return options;
     }
 
@@ -377,7 +382,7 @@ public class Migration extends ExportingToolBase {
                     echo( task.adminUser );
 
                     // write metadata to metadata file
-                    saveCollections(   metadataFile, task );
+                    //saveCollections(   metadataFile, task );
                     saveConnections(   metadataFile, task );
                     //saveOrganizations( metadataFile, task );
                     saveDictionaries(  metadataFile, task );

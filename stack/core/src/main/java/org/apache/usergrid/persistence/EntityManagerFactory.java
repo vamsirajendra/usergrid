@@ -20,6 +20,8 @@ package org.apache.usergrid.persistence;
 import java.util.Map;
 import java.util.UUID;
 
+import org.apache.usergrid.persistence.entities.Application;
+
 
 // TODO: Auto-generated Javadoc
 
@@ -96,6 +98,8 @@ public interface EntityManagerFactory {
      * @throws Exception the exception
      */
     public abstract Map<String, UUID> getApplications() throws Exception;
+
+    public Application getApplication( String name ) throws Exception;
 
     public abstract void setup() throws Exception;
 

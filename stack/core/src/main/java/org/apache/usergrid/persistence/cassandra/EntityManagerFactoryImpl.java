@@ -300,6 +300,7 @@ public class EntityManagerFactoryImpl implements EntityManagerFactory, Applicati
      *
      * @throws Exception the exception
      */
+    @Override
     @Metered(group = "core", name = "EntityManagerFactory_getApplication")
     public Application getApplication( String name ) throws Exception {
         name = name.toLowerCase();
