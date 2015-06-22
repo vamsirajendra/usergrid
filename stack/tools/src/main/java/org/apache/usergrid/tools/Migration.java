@@ -32,6 +32,7 @@ import org.apache.usergrid.persistence.entities.Application;
 import org.apache.usergrid.utils.JsonUtils;
 import org.apache.usergrid.utils.StringUtils;
 import org.codehaus.jackson.JsonGenerator;
+import org.codehaus.jackson.util.MinimalPrettyPrinter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -101,7 +102,7 @@ public class Migration extends ExportingToolBase {
                 return;
             }
         } else {
-            readThreadCount = 1;
+            readThreadCount = 20;
         }
 
         // start write queue worker
@@ -243,7 +244,6 @@ public class Migration extends ExportingToolBase {
                     addCollectionsToTask(   task, entity );
                     addDictionariesToTask(  task, entity );
                     addConnectionsToTask(   task, entity );
-                   // addOrganizationsToTask( task, entity );
 
                     writeQueue.add( task );
 
@@ -321,11 +321,6 @@ public class Migration extends ExportingToolBase {
             }
         }
 
-
-        private void addOrganizationsToTask(AdminUserWriteTask task, Entity entity) throws Exception {
-            task.orgNamesByUuid = managementService.getOrganizationsForAdminUser( entity.getUuid() );
-        }
-
         public void setDone(boolean done) {
             this.done = done;
         }
@@ -360,7 +355,8 @@ public class Migration extends ExportingToolBase {
             // write one JSON file for management application users
             JsonGenerator usersFile =
                     getJsonGenerator( createOutputFile( ADMIN_USERS_PREFIX, em.getApplication().getName() ) );
-            usersFile.writeStartArray();
+            usersFile.setPrettyPrinter( new MinimalPrettyPrinter( "" ) );
+            //usersFile.writeStartArray();
 
             int count = 0;
 
@@ -384,7 +380,8 @@ public class Migration extends ExportingToolBase {
                     saveDictionaries(  usersFile, task );
 
                     usersFile.writeEndObject();
-
+                    //usersFile.writeRaw( '}' );
+                    usersFile.writeRaw( '\n' );
                     logger.debug("Exported user {}", task.adminUser.getProperty( "email" ));
 
                     count++;
@@ -398,37 +395,11 @@ public class Migration extends ExportingToolBase {
                 }
             }
 
-            usersFile.writeEndArray();
+           // usersFile.writeEndArray();
             usersFile.close();
 
             logger.info("Exported TOTAL {} admin users", count);
         }
-
-
-        private void saveCollections( JsonGenerator jg, AdminUserWriteTask task ) throws Exception {
-
-            jg.writeFieldName( task.adminUser.getUuid().toString() );
-            jg.writeStartObject();
-
-            for (String collectionName : task.collectionsByName.keySet() ) {
-
-                jg.writeFieldName( collectionName );
-                jg.writeStartArray();
-
-                List<UUID> entityIds = task.collectionsByName.get( collectionName );
-
-                if ((entityIds != null) && !entityIds.isEmpty()) {
-                    for (UUID childEntityUUID : entityIds) {
-                        jg.writeObject( childEntityUUID.toString() );
-                    }
-                }
-
-                jg.writeEndArray();
-            }
-
-            jg.writeEndObject();
-        }
-
 
         private void saveDictionaries( JsonGenerator jg, AdminUserWriteTask task ) throws Exception {
 
@@ -480,31 +451,6 @@ public class Migration extends ExportingToolBase {
                 jg.writeEndArray();
             }
             jg.writeEndObject();
-        }
-
-
-        private void saveOrganizations( JsonGenerator jg, AdminUserWriteTask task ) throws Exception {
-
-            final BiMap<UUID, String> orgs = task.orgNamesByUuid;
-
-            jg.writeFieldName( "organizations" );
-
-            jg.writeStartArray();
-
-            for (UUID uuid : orgs.keySet()) {
-
-                jg.writeStartObject();
-
-                jg.writeFieldName( "uuid" );
-                jg.writeObject( uuid );
-
-                jg.writeFieldName( "name" );
-                jg.writeObject( orgs.get( uuid ) );
-
-                jg.writeEndObject();
-            }
-
-            jg.writeEndArray();
         }
 
         public void setDone(boolean done) {
