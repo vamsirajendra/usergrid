@@ -127,32 +127,23 @@ public class MigrationTest {
         Set<String> usernames = new HashSet<String>();
         for ( int i=0; i<node.size(); i++) {
             JsonNode jsonNode = node.get( i );
-            if ( jsonNode.get( "username" ) != null )
-                usernames.add( jsonNode.get("username").asText() );
+            if ( jsonNode.get( "entity" ).get( "username" )!= null )
+                usernames.add( jsonNode.get( "entity" ).get( "username" ).asText());
         }
 
         //TODO: crappy way of doing verificatino that all users were written to the file.
         for ( int i = 0; i < 10; i++ ) {
             assertTrue( usernames.contains( "user_"+i ) );
         }
-        //assertTrue( usernames.contains( "user_" + random2 ));
-
-        // second, the metadata file
-
-        String[] metadataFileNames = directory.list( new FilenameFilter() {
-            public boolean accept(File dir, String name) {
-                return name.startsWith("admin-user-metadata.");
-            }
-        });
 
         // only one, read it into a map
 
-        File metadataFile = new File(
-                directory.getAbsolutePath() + File.separator + metadataFileNames[0] );
 
-        mapper = new ObjectMapper();
-        node = mapper.readTree( metadataFile );
-        assertTrue( node.isObject() );
+        //TODO:GREY do some verification of the metadata that is now included with the entity.
+//
+//        mapper = new ObjectMapper();
+//        node = mapper.readTree( metadataFile );
+//        assertTrue( node.isObject() );
 
         // do users belong to correct orgs
 

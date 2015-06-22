@@ -362,11 +362,6 @@ public class Migration extends ExportingToolBase {
                     getJsonGenerator( createOutputFile( ADMIN_USERS_PREFIX, em.getApplication().getName() ) );
             usersFile.writeStartArray();
 
-            // write one JSON file for metadata: collections, connections and dictionaries of those users
-            JsonGenerator metadataFile =
-                    getJsonGenerator( createOutputFile( ADMIN_USER_METADATA_PREFIX, em.getApplication().getName() ) );
-            metadataFile.writeStartObject();
-
             int count = 0;
 
             while ( true ) {
@@ -378,14 +373,17 @@ public class Migration extends ExportingToolBase {
                     }
 
                     // write user to application file
-                    usersFile.writeObject( task.adminUser );
+                    //TODO: GREY make a method that writes the object as a whole entity , with properties and all
+                    usersFile.writeStartObject();
+
+                    saveEntity(usersFile,task);
                     echo( task.adminUser );
 
                     // write metadata to metadata file
-                    //saveCollections(   metadataFile, task );
-                    saveConnections(   metadataFile, task );
-                    //saveOrganizations( metadataFile, task );
-                    saveDictionaries(  metadataFile, task );
+                    saveConnections(   usersFile, task );
+                    saveDictionaries(  usersFile, task );
+
+                    usersFile.writeEndObject();
 
                     logger.debug("Exported user {}", task.adminUser.getProperty( "email" ));
 
@@ -399,9 +397,6 @@ public class Migration extends ExportingToolBase {
                     throw new Exception("Interrupted", e);
                 }
             }
-
-            metadataFile.writeEndObject();
-            metadataFile.close();
 
             usersFile.writeEndArray();
             usersFile.close();
@@ -462,6 +457,10 @@ public class Migration extends ExportingToolBase {
             jg.writeEndObject();
         }
 
+        private void saveEntity(JsonGenerator jg, AdminUserWriteTask task) throws Exception {
+            jg.writeFieldName( "entity" );
+            jg.writeObject( task.adminUser );
+        }
 
         private void saveConnections( JsonGenerator jg, AdminUserWriteTask task ) throws Exception {
 
