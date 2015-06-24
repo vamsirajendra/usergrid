@@ -30,7 +30,11 @@ import org.apache.usergrid.management.UserInfo;
 import org.apache.usergrid.persistence.Entity;
 import org.apache.usergrid.persistence.EntityManager;
 import org.apache.usergrid.utils.UUIDUtils;
+
+import org.codehaus.jackson.JsonFactory;
 import org.codehaus.jackson.JsonNode;
+import org.codehaus.jackson.JsonParser;
+import org.codehaus.jackson.map.MappingIterator;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.junit.ClassRule;
 import org.slf4j.Logger;
@@ -40,6 +44,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FilenameFilter;
+import java.io.InputStream;
 import java.util.*;
 
 import static junit.framework.TestCase.assertNotNull;
@@ -109,7 +114,7 @@ public class MigrationTest {
         File directory = new File( directoryName );
         String[] adminUsersFileNames = directory.list( new FilenameFilter() {
             public boolean accept(File dir, String name) {
-                return name.startsWith("admin-users.");
+                return name.startsWith("application.");
             }
         });
 
@@ -118,20 +123,23 @@ public class MigrationTest {
         File adminUsersFile = new File(
                 directory.getAbsolutePath() + File.separator + adminUsersFileNames[0] );
 
+        JsonFactory jsonFactory = new JsonFactory(  );
+        JsonParser jsonParser = jsonFactory.createJsonParser( adminUsersFile );
+
+
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode node = mapper.readTree( adminUsersFile );
-       // assertTrue( node.isArray() );
-
-        // does file contain our two admin users?
-
+        MappingIterator<JsonNode> nodeMappingIterator = mapper.readValues( jsonParser, JsonNode.class );
         Set<String> usernames = new HashSet<String>();
-        for ( int i=0; i<node.size(); i++) {
-            JsonNode jsonNode = node.get( i );
-            if ( jsonNode.get( "entity" ).get( "username" )!= null )
-                usernames.add( jsonNode.get( "entity" ).get( "username" ).asText());
+
+
+        //TODO:GREy MAKE A LOOP OF THIS. THIS IS HOW YOU READ FILES THAT ARE ORGANIZED HOW JEFF WANTS THEM.
+        while(nodeMappingIterator.hasNext()){
+            JsonNode node = nodeMappingIterator.next();
+            if ( node.get( "entity" ).get( "username" )!= null )
+                usernames.add( node.get( "entity" ).get( "username" ).asText());
         }
 
-        //TODO: crappy way of doing verificatino that all users were written to the file.
+        //TODO: Add further verification.
         for ( int i = 0; i < 10; i++ ) {
             assertTrue( usernames.contains( "user_"+i ) );
         }
@@ -141,19 +149,6 @@ public class MigrationTest {
 
         //TODO:GREY do some verification of the metadata that is now included with the entity.
 //
-//        mapper = new ObjectMapper();
-//        node = mapper.readTree( metadataFile );
-//        assertTrue( node.isObject() );
-
-        // do users belong to correct orgs
-
-//        JsonNode user1node = node.findValue( orgOwnerInfo1.getOwner().getUuid().toString() );
-//        JsonNode orgs1 = user1node.findValue( "organizations");
-//        assertEquals( 2, orgs1.size() );
-//
-//        JsonNode user2node = node.findValue( orgOwnerInfo2.getOwner().getUuid().toString() );
-//        JsonNode orgs2 = user2node.findValue( "organizations");
-//        assertEquals( 1, orgs2.size() );
     }
 
 }

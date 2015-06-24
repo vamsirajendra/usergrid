@@ -18,7 +18,6 @@
 package org.apache.usergrid.tools;
 
 
-import com.google.common.collect.BiMap;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
@@ -27,7 +26,6 @@ import org.apache.commons.cli.Options;
 import org.apache.usergrid.management.OrganizationInfo;
 import org.apache.usergrid.persistence.*;
 import org.apache.usergrid.persistence.Results.Level;
-import org.apache.usergrid.persistence.cassandra.CassandraService;
 import org.apache.usergrid.persistence.entities.Application;
 import org.apache.usergrid.utils.JsonUtils;
 import org.apache.usergrid.utils.StringUtils;
@@ -45,35 +43,33 @@ import java.util.concurrent.TimeUnit;
 /**
  * Export Single application and all entities inside.
  *
- * java -jar usergrid-tools.jar Migration -appName
+ * java -jar usergrid-tools.jar Migration -orgId -appName
  */
 public class Migration extends ExportingToolBase {
 
     static final Logger logger = LoggerFactory.getLogger( Migration.class );
-    public static final String ADMIN_USERS_PREFIX = "admin-users";
-    public static final String ADMIN_USER_METADATA_PREFIX = "admin-user-metadata";
+    public static final String APPLICATION_PREFIX = "application";
     private static final String READ_THREAD_COUNT = "readThreads";
     private int readThreadCount;
 
 
     /**
-     * Represents an AdminUser that has been read and is ready for export.
+     * Represents an Entity r that has been read and is ready for export.
      */
-    class AdminUserWriteTask {
-        Entity                           adminUser;
+    class ApplicationWriteTask {
+        Entity entity;
         Map<String, List<UUID>>          collectionsByName;
         Map<String, List<ConnectionRef>> connectionsByType;
         Map<String, Map<Object, Object>> dictionariesByName;
-        BiMap<UUID, String>              orgNamesByUuid;
     }
 
 
     /**
-     * Export admin users using multiple threads.
+     * Export Application entities using multiple threads.
      * <p/>
      * How it works:
-     * In main thread we query for IDs of all admin users, add each ID to read queue.
-     * Read-queue workers read admin user data, add data to write queue.
+     * In main thread we query for IDs of all entities in an application collection, add each ID to read queue.
+     * Read-queue workers read entities from cassandra, add data to write queue.
      * One write-queue worker reads data writes to file.
      */
     @Override
@@ -107,19 +103,19 @@ public class Migration extends ExportingToolBase {
 
         // start write queue worker
 
-        BlockingQueue<AdminUserWriteTask> writeQueue = new LinkedBlockingQueue<AdminUserWriteTask>();
-        AdminUserWriter adminUserWriter = new AdminUserWriter( writeQueue );
-        Thread writeThread = new Thread( adminUserWriter );
+        BlockingQueue<ApplicationWriteTask> writeQueue = new LinkedBlockingQueue<ApplicationWriteTask>();
+        ApplicationWriter applicationWriter = new ApplicationWriter( writeQueue );
+        Thread writeThread = new Thread( applicationWriter );
         writeThread.start();
         logger.debug( "Write thread started" );
 
         // start read queue workers
 
         BlockingQueue<UUID> readQueue = new LinkedBlockingQueue<UUID>();
-        List<AdminUserReader> readers = new ArrayList<AdminUserReader>();
+        List<ApplicationReader> readers = new ArrayList<ApplicationReader>();
         for (int i = 0; i < readThreadCount; i++) {
-            AdminUserReader worker = new AdminUserReader( readQueue, writeQueue );
-            Thread readerThread = new Thread( worker, "AdminUserReader-" + i );
+            ApplicationReader worker = new ApplicationReader( readQueue, writeQueue );
+            Thread readerThread = new Thread( worker, "ApplicationReader-" + i );
             readerThread.start();
             readers.add( worker );
         }
@@ -153,6 +149,7 @@ public class Migration extends ExportingToolBase {
             Results ids = em.searchCollection( em.getApplicationRef(), collectionName, query );
             while(true) {
                 for ( UUID uuid : ids.getIds() ) {
+                    //Adds the entities in the collection to the read queue. to the read queue to add the entities later.
                     readQueue.add( uuid );
                     logger.debug( "Added uuid to readQueue: " + uuid );
                 }
@@ -166,8 +163,8 @@ public class Migration extends ExportingToolBase {
             }
         }
 
-        adminUserWriter.setDone( true );
-        for (AdminUserReader aur : readers) {
+        applicationWriter.setDone( true );
+        for (ApplicationReader aur : readers) {
             aur.setDone( true );
         }
 
@@ -198,14 +195,14 @@ public class Migration extends ExportingToolBase {
     }
 
 
-    public class AdminUserReader implements Runnable {
+    public class ApplicationReader implements Runnable {
 
         private boolean done = true;
 
         private final BlockingQueue<UUID> readQueue;
-        private final BlockingQueue<AdminUserWriteTask> writeQueue;
+        private final BlockingQueue<ApplicationWriteTask> writeQueue;
 
-        public AdminUserReader( BlockingQueue<UUID> readQueue, BlockingQueue<AdminUserWriteTask> writeQueue ) {
+        public ApplicationReader( BlockingQueue<UUID> readQueue, BlockingQueue<ApplicationWriteTask> writeQueue ) {
             this.readQueue = readQueue;
             this.writeQueue = writeQueue;
         }
@@ -214,14 +211,14 @@ public class Migration extends ExportingToolBase {
         @Override
         public void run() {
             try {
-                readAndQueueAdminUsers();
+                readAndQueueApplicationCollectionEntities();
             } catch (Exception e) {
                 logger.error("Error reading data for export", e);
             }
         }
 
 
-        private void readAndQueueAdminUsers() throws Exception {
+        private void readAndQueueApplicationCollectionEntities() throws Exception {
 
             EntityManager em = applicationEntityManagerCreator();
 
@@ -238,8 +235,8 @@ public class Migration extends ExportingToolBase {
 
                     Entity entity = em.get( uuid );
 
-                    AdminUserWriteTask task = new AdminUserWriteTask();
-                    task.adminUser = entity;
+                    ApplicationWriteTask task = new ApplicationWriteTask();
+                    task.entity = entity;
 
                     addCollectionsToTask(   task, entity );
                     addDictionariesToTask(  task, entity );
@@ -254,7 +251,7 @@ public class Migration extends ExportingToolBase {
         }
 
 
-        private void addCollectionsToTask(AdminUserWriteTask task, Entity entity) throws Exception {
+        private void addCollectionsToTask(ApplicationWriteTask task, Entity entity) throws Exception {
 
             EntityManager em = applicationEntityManagerCreator();
             Set<String> collections = em.getCollections( entity );
@@ -285,7 +282,7 @@ public class Migration extends ExportingToolBase {
         }
 
 
-        private void addDictionariesToTask(AdminUserWriteTask task, Entity entity) throws Exception {
+        private void addDictionariesToTask(ApplicationWriteTask task, Entity entity) throws Exception {
             EntityManager em = applicationEntityManagerCreator();
 
             Set<String> dictionaries = em.getDictionaries( entity );
@@ -299,7 +296,7 @@ public class Migration extends ExportingToolBase {
         }
 
 
-        private void addConnectionsToTask(AdminUserWriteTask task, Entity entity) throws Exception {
+        private void addConnectionsToTask(ApplicationWriteTask task, Entity entity) throws Exception {
             EntityManager em = applicationEntityManagerCreator();
 
             task.connectionsByType = new HashMap<String, List<ConnectionRef>>();
@@ -326,13 +323,13 @@ public class Migration extends ExportingToolBase {
         }
     }
 
-    class AdminUserWriter implements Runnable {
+    class ApplicationWriter implements Runnable {
 
         private boolean done = false;
 
-        private final BlockingQueue<AdminUserWriteTask> taskQueue;
+        private final BlockingQueue<ApplicationWriteTask> taskQueue;
 
-        public AdminUserWriter( BlockingQueue<AdminUserWriteTask> taskQueue ) {
+        public ApplicationWriter( BlockingQueue<ApplicationWriteTask> taskQueue ) {
             this.taskQueue = taskQueue;
         }
 
@@ -354,7 +351,7 @@ public class Migration extends ExportingToolBase {
             //TODO: could do one file for collections and one file for applications or multiple.
             // write one JSON file for management application users
             JsonGenerator usersFile =
-                    getJsonGenerator( createOutputFile( ADMIN_USERS_PREFIX, em.getApplication().getName() ) );
+                    getJsonGenerator( createOutputFile( APPLICATION_PREFIX, em.getApplication().getName() ) );
             usersFile.setPrettyPrinter( new MinimalPrettyPrinter( "" ) );
             //usersFile.writeStartArray();
 
@@ -363,7 +360,7 @@ public class Migration extends ExportingToolBase {
             while ( true ) {
 
                 try {
-                    AdminUserWriteTask task = taskQueue.poll( 30, TimeUnit.SECONDS );
+                    ApplicationWriteTask task = taskQueue.poll( 30, TimeUnit.SECONDS );
                     if ( task == null && done ) {
                         break;
                     }
@@ -373,7 +370,7 @@ public class Migration extends ExportingToolBase {
                     usersFile.writeStartObject();
 
                     saveEntity(usersFile,task);
-                    echo( task.adminUser );
+                    echo( task.entity );
 
                     // write metadata to metadata file
                     saveConnections(   usersFile, task );
@@ -382,11 +379,11 @@ public class Migration extends ExportingToolBase {
                     usersFile.writeEndObject();
                     //usersFile.writeRaw( '}' );
                     usersFile.writeRaw( '\n' );
-                    logger.debug("Exported user {}", task.adminUser.getProperty( "email" ));
+                    logger.debug( "Exported user {}", task.entity.getProperty( "email" ) );
 
                     count++;
                     if ( count % 1000 == 0 ) {
-                        logger.info("Exported {} admin users", count);
+                        logger.info("Exported {} entities", count);
                     }
 
 
@@ -398,10 +395,10 @@ public class Migration extends ExportingToolBase {
            // usersFile.writeEndArray();
             usersFile.close();
 
-            logger.info("Exported TOTAL {} admin users", count);
+            logger.info("Exported TOTAL {} entities", count);
         }
 
-        private void saveDictionaries( JsonGenerator jg, AdminUserWriteTask task ) throws Exception {
+        private void saveDictionaries( JsonGenerator jg, ApplicationWriteTask task ) throws Exception {
 
             jg.writeFieldName( "dictionaries" );
             jg.writeStartObject();
@@ -428,12 +425,12 @@ public class Migration extends ExportingToolBase {
             jg.writeEndObject();
         }
 
-        private void saveEntity(JsonGenerator jg, AdminUserWriteTask task) throws Exception {
+        private void saveEntity(JsonGenerator jg, ApplicationWriteTask task) throws Exception {
             jg.writeFieldName( "entity" );
-            jg.writeObject( task.adminUser );
+            jg.writeObject( task.entity );
         }
 
-        private void saveConnections( JsonGenerator jg, AdminUserWriteTask task ) throws Exception {
+        private void saveConnections( JsonGenerator jg, ApplicationWriteTask task ) throws Exception {
 
             jg.writeFieldName( "connections" );
             jg.writeStartObject();
