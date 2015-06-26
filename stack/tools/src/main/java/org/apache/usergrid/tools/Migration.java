@@ -26,6 +26,7 @@ import org.apache.commons.cli.Options;
 import org.apache.usergrid.management.OrganizationInfo;
 import org.apache.usergrid.persistence.*;
 import org.apache.usergrid.persistence.Results.Level;
+import org.apache.usergrid.persistence.cassandra.CassandraService;
 import org.apache.usergrid.persistence.entities.Application;
 import org.apache.usergrid.utils.JsonUtils;
 import org.apache.usergrid.utils.StringUtils;
@@ -88,6 +89,15 @@ public class Migration extends ExportingToolBase {
         prepareBaseOutputFileName( line );
         outputDir = createOutputParentDir();
         logger.info( "Export directory: " + outputDir.getAbsolutePath() );
+
+
+        //TODO: reset the keyspace to be whatever we specify in the tool
+        //if it is not that keyspace then just use the default keyspaces.
+        //properties.setProperty( "cassandra.system.keyspace",);
+        properties.setProperty( "cassandra.application.keyspace", "Bobgrid_Apps");
+
+        //Then reinitialize the bootstraped cassandra service to use the new properties.
+        cass.init();
 
         //Define how many threads we should use
         if (StringUtils.isNotEmpty( line.getOptionValue( READ_THREAD_COUNT ) )) {
