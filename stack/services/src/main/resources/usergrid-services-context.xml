@@ -24,15 +24,23 @@
 	http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.1.xsd">
 
 	<context:component-scan base-package="org.apache.usergrid.services"  />
-	
-	
+
+
 	<import resource="classpath:/usergrid-core-context.xml" />
 
 	<!--  scan for security -->
 	<context:component-scan base-package="org.apache.usergrid.security.crypto"  />
 
+    <!--
+    <bean id="cacheManager" class="org.apache.shiro.cache.MemoryConstrainedCacheManager"/>
+    -->
+    <bean id="cacheManager" class="org.apache.usergrid.security.shiro.ShiroCacheManager">
+        <property name="properties" ref="properties" />
+    </bean>
+
 	<bean id="realm" class="org.apache.usergrid.security.shiro.Realm">
-		<property name="name" value="realm" />
+        <property name="name" value="realm" />
+        <property name="cacheManager" ref="cacheManager" />
 	</bean>
 
 	<bean id="securityManager" class="org.apache.shiro.mgt.DefaultSecurityManager">
@@ -48,7 +56,6 @@
 		<property name="arguments" ref="securityManager" />
 	</bean>
 
-
 	<bean id="taskExecutor" class="org.springframework.core.task.SyncTaskExecutor"/>
 
 	<bean id="tokenService" class="org.apache.usergrid.security.tokens.cassandra.TokenServiceImpl">
@@ -59,7 +66,7 @@
 	<bean id="managementService" class="org.apache.usergrid.management.cassandra.ManagementServiceImpl" >
 		<property name="saltProvider" ref="saltProvider"/>
 	</bean>
-	
+
 	<bean id="saltProvider" class="org.apache.usergrid.security.salt.NoOpSaltProvider" />
 
 	<bean id="serviceManagerFactory" class="org.apache.usergrid.services.ServiceManagerFactory">
@@ -88,5 +95,32 @@
   </bean>
 
   <bean id="exportJob" class="org.apache.usergrid.management.export.ExportJob" />
+
+    <bean id="serviceModule" class="org.apache.usergrid.services.guice.ServiceModuleImpl" />
+
+
+    <bean id="notificationsQueueListener" class="org.apache.usergrid.services.notifications.QueueListener">
+    <constructor-arg name="emf" ref="entityManagerFactory" />
+    <constructor-arg name="props" ref="properties" />
+    <constructor-arg name="smf" ref="serviceManagerFactory" />
+  </bean>
+
+  <bean id="importService" class="org.apache.usergrid.management.importer.ImportServiceImpl" >
+    <property name="managementService" ref="managementService"/>
+      <property name="emf" ref="entityManagerFactory"/>
+      <property name="sch" ref="schedulerService"/>
+  </bean>
+
+    <!--<bean id="importQueueListener" class="org.apache.usergrid.services.queues.ImportQueueListener"-->
+          <!--scope="singleton">-->
+        <!--<constructor-arg orgAppName="emf" ref="entityManagerFactory" />-->
+        <!--<constructor-arg orgAppName="metricsService" ref="metricsFactory" />-->
+        <!--<constructor-arg orgAppName="smf" ref="serviceManagerFactory" />-->
+        <!--<constructor-arg orgAppName="props" ref="properties" />-->
+
+    <!--</bean>-->
+
+  <bean id="importJob" class="org.apache.usergrid.management.importer.ImportJob" />
+  <bean id="fileImportJob" class="org.apache.usergrid.management.importer.FileImportJob" />
 
 </beans>

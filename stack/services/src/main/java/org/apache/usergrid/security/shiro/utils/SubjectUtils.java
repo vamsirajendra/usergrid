@@ -17,15 +17,16 @@
 package org.apache.usergrid.security.shiro.utils;
 
 
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.google.common.collect.HashBiMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.usergrid.management.ApplicationInfo;
 import org.apache.usergrid.management.OrganizationInfo;
 import org.apache.usergrid.management.UserInfo;
-import org.apache.usergrid.persistence.Identifier;
 import org.apache.usergrid.security.shiro.PrincipalCredentialsToken;
 import org.apache.usergrid.security.shiro.principals.UserPrincipal;
 
@@ -38,6 +39,7 @@ import org.apache.shiro.subject.Subject;
 import com.google.common.collect.BiMap;
 
 import static org.apache.commons.lang.StringUtils.isNotBlank;
+import org.apache.usergrid.persistence.index.query.Identifier;
 import static org.apache.usergrid.security.shiro.Realm.ROLE_ADMIN_USER;
 import static org.apache.usergrid.security.shiro.Realm.ROLE_APPLICATION_ADMIN;
 import static org.apache.usergrid.security.shiro.Realm.ROLE_APPLICATION_USER;
@@ -77,8 +79,9 @@ public class SubjectUtils {
             return null;
         }
         Session session = currentUser.getSession();
-        @SuppressWarnings( "unchecked" ) BiMap<UUID, String> organizations =
-                ( BiMap<UUID, String> ) session.getAttribute( "organizations" );
+        BiMap<UUID, String> organizations = HashBiMap.create();
+        Map map = (Map)session.getAttribute( "organizations" );
+        organizations.putAll(map);
         return organizations;
     }
 
@@ -243,15 +246,13 @@ public class SubjectUtils {
         String applicationName = null;
         UUID applicationId = null;
         BiMap<UUID, String> applications = getApplications();
+
         if ( applications == null ) {
             return null;
         }
         if ( identifier.isName() ) {
             applicationName = identifier.getName().toLowerCase();
             applicationId = applications.inverse().get( applicationName );
-            if ( applicationId == null ) {
-                applicationId = applications.inverse().get( identifier.getName() );
-            }
         }
         else if ( identifier.isUUID() ) {
             applicationId = identifier.getUUID();
@@ -274,7 +275,11 @@ public class SubjectUtils {
             return null;
         }
         Session session = currentUser.getSession();
-        return ( BiMap<UUID, String> ) session.getAttribute( "applications" );
+
+        BiMap<UUID, String> applications = HashBiMap.create();
+        Map map = (Map)session.getAttribute( "applications" );
+        applications.putAll(map);
+        return applications;
     }
 
 
@@ -424,7 +429,7 @@ public class SubjectUtils {
             currentUser.checkPermission( permission );
         }
         catch ( org.apache.shiro.authz.UnauthenticatedException e ) {
-            logger.error( "checkPermission(): Subject is anonymous" );
+            logger.debug( "checkPermission(): Subject is anonymous" );
         }
     }
 

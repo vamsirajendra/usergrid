@@ -19,17 +19,21 @@ package org.apache.usergrid.security.oauth;
 
 import java.util.UUID;
 
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
+
 import org.apache.usergrid.security.AuthPrincipalType;
 import org.apache.usergrid.utils.UUIDUtils;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 
 public class ClientCredentialsInfo {
 
-    private final String id;
-    private final String secret;
+    private String id;
+    private String secret;
 
+    /** Needed for Jackson since this class is serialized to the Shiro Cache */
+    public ClientCredentialsInfo() {}
 
     public ClientCredentialsInfo( String id, String secret ) {
         this.id = id;

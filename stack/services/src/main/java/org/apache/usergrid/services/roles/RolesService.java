@@ -21,11 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.usergrid.persistence.cache.CacheScope;
+import org.apache.usergrid.persistence.cache.ScopedCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.usergrid.persistence.EntityRef;
 import org.apache.usergrid.persistence.Query;
-import org.apache.usergrid.persistence.SimpleRoleRef;
 import org.apache.usergrid.persistence.entities.Group;
 import org.apache.usergrid.services.AbstractCollectionService;
 import org.apache.usergrid.services.ServiceContext;
@@ -43,7 +44,7 @@ public class RolesService extends AbstractCollectionService {
 
     public RolesService() {
         super();
-        logger.info( "/roles" );
+        logger.debug( "/roles" );
 
         declareEntityDictionary( "permissions" );
     }
@@ -52,8 +53,7 @@ public class RolesService extends AbstractCollectionService {
     @Override
     public ServiceResults getItemByName( ServiceContext context, String name ) throws Exception {
         if ( ( context.getOwner() != null ) && Group.ENTITY_TYPE.equals( context.getOwner().getType() ) ) {
-            return getItemById( context,
-                    SimpleRoleRef.getIdForGroupIdAndRoleName( context.getOwner().getUuid(), name ) );
+            return getItemById( context, em.getGroupRoleRef( context.getOwner().getUuid(), name ).getUuid() );
         }
         return super.getItemByName( context, name );
     }
@@ -61,7 +61,7 @@ public class RolesService extends AbstractCollectionService {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.usergrid.services.AbstractService#getEntityDictionary(org.apache.usergrid
      * .services.ServiceContext, java.util.List, java.lang.String)
@@ -91,7 +91,7 @@ public class RolesService extends AbstractCollectionService {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.usergrid.services.AbstractService#putEntityDictionary(org.apache.usergrid
      * .services.ServiceContext, java.util.List, java.lang.String,
@@ -107,7 +107,7 @@ public class RolesService extends AbstractCollectionService {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.usergrid.services.AbstractService#postEntityDictionary(org.apache.usergrid
      * .services.ServiceContext, java.util.List, java.lang.String,
@@ -146,7 +146,7 @@ public class RolesService extends AbstractCollectionService {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.apache.usergrid.services.AbstractService#deleteEntityDictionary(org.apache.usergrid
      * .services.ServiceContext, java.util.List, java.lang.String)
@@ -198,18 +198,6 @@ public class RolesService extends AbstractCollectionService {
     }
 
 
-    public ServiceResults newApplicationRole( String roleName, String roleTitle, long inactivity ) throws Exception {
-        em.createRole( roleName, roleTitle, inactivity );
-        return getApplicationRoles();
-    }
-
-
-    public ServiceResults deleteApplicationRole( String roleName ) throws Exception {
-        em.deleteRole( roleName );
-        return getApplicationRolePermissions( roleName );
-    }
-
-
     public ServiceResults getApplicationRolePermissions( String roleName ) throws Exception {
         Set<String> permissions = em.getRolePermissions( roleName );
         ServiceResults results = genericServiceResults().withData( permissions );
@@ -218,13 +206,17 @@ public class RolesService extends AbstractCollectionService {
 
 
     public ServiceResults grantApplicationRolePermission( String roleName, String permission ) throws Exception {
-        em.grantRolePermission( roleName, permission );
+        em.grantRolePermission(roleName, permission);
+        ScopedCache scopedCache = cacheFactory.getScopedCache(new CacheScope(em.getApplication().asId()));
+        scopedCache.invalidate();
         return getApplicationRolePermissions( roleName );
     }
 
 
     public ServiceResults revokeApplicationRolePermission( String roleName, String permission ) throws Exception {
         em.revokeRolePermission( roleName, permission );
+        ScopedCache scopedCache = cacheFactory.getScopedCache(new CacheScope(em.getApplication().asId()));
+        scopedCache.invalidate();
         return getApplicationRolePermissions( roleName );
     }
 
